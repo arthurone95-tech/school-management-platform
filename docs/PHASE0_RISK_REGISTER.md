@@ -256,7 +256,9 @@ Phase 0 exit criteria are met. The two follow-on items recorded in section 5 wer
 
 ### 10.1 Session verification method (verified 2026-10-11)
 
-**No Supabase project has been created or configured.** The repository contains no `supabase/` directory, no `config.toml`, no `.env`, and no Supabase URL or key reference. No project configuration could therefore be inspected directly, and no credential was read.
+**No Supabase project has been created or configured, and no credential has been read.** As of 2026-10-11 the repository contains the client foundation only: `src/lib/supabase/` (browser, server, `server-only` admin, and environment access), and `src/proxy.ts` for session refresh (R-01, R-09). There is still no `supabase/` directory, no `config.toml`, no `.env`, and no Supabase URL or key value. No project configuration could therefore be inspected directly.
+
+The proxy fails loudly in production when the public configuration is missing, and passes through in development so the local scaffold remains usable before a project exists. This was verified by running the production build with and without configuration.
 
 The approach below is taken from current Supabase vendor documentation and is the documented default. It is **conditional** and must be verified against the actual project once one exists.
 
