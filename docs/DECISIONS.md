@@ -2,7 +2,7 @@
 
 **Project:** School Management Platform\
 **Document status:** Living decision record\
-**Version:** 1.1
+**Version:** 1.2
 
 ## 1. Purpose
 
@@ -189,6 +189,48 @@ Evaluate costs, credentials, reliability, security, and alternatives before intr
 - **Dependencies:** Role and permission definitions for the first release. Confirmation that the fields actually required at enrolment match the minimum necessary.
 - **Approval:** Project owner.
 
+### D-019: Student registration, identifiers, and portal account access
+
+- **Status:** Confirmed
+- **Date:** 2026-10-11
+- **Context:** D-018 selected student enrolment including class placement as the first workflow and left open which fields are genuinely required and how a student would later reach their own records. A reference-system investigation of two existing school systems (YAW Academy and Tina's Little Angels Preparatory School) listed ten enrolment fields but found no universal field policy, no shared multi-tenant architecture, and no validated approval process. `docs/SECURITY_AND_PRIVACY.md` 4 requires data minimisation, and `docs/PRD.md` 8 treats parent and student portals as non-goals "before the core school workflows are validated". The project owner then approved a specific registration and account model.
+- **Decision:** The owner approved the registration field model, the two-identifier model, the administrator-led portal activation model, and the password and recovery policy recorded in full in `docs/ENROLMENT_PERMISSION_MODEL.md` 7 and 8. In summary:
+  - Registration is performed by an authorised school administrator. Students do not self-register.
+  - Required fields: first name, last name, system-generated internal student ID, school registration number, gender (controlled list: Male, Female, Other), date of birth, residential address, parent/guardian phone, and class placement selected from the school's configured class records. Parent/guardian email is optional.
+  - **No personal email address is required** of a student for registration or portal access.
+  - The internal student ID and the school registration number are separate. Neither is a password or sufficient proof of account ownership.
+  - The school registration number is unique **within its school**, not globally. Login usernames are unique within the sign-in namespace.
+  - Portal access is a **separate state** from enrolment status. A student may be registered before portal access is released.
+  - Activation uses a single-use, hashed, expiring credential (initial default 72 hours), presented to the administrator for manual sharing. No messaging integration exists or is assumed (D-014).
+  - Administrators never see or choose a student's password. Recovery is student-initiated where a verified method exists, otherwise administrator-assisted, and is audited.
+- **Reasoning:** The owner's requirement is to register students without requiring them to own email addresses. This is realistic for community schools and reduces the personal data collected about children. Separating the internal ID from the administrative registration number keeps the database key stable and opaque while giving schools a readable reference. Separating portal access from enrolment lets a school record a student immediately and defer the account decision. Administrator-led activation matches the finding that administrators create accounts and avoids building an unvalidated self-service flow.
+- **Alternatives:** *Collecting all ten reference-system fields including email by default* was rejected as contrary to data minimisation and unnecessary for enrolment. *Free-text class names* were already rejected in the enrolment model on data-integrity grounds. *Student self-registration* was rejected: it would allow unverified records and does not match observed practice. *A single identifier used for both database linkage and school administration* was rejected because the two have different uniqueness scopes and different exposure. *Global uniqueness for the school registration number* was rejected because schools assign their own numbers independently and collisions across schools are expected and harmless.
+- **Consequences:** The enrolment schema carries required columns for the fields above, a composite unique constraint on `(school_id, registration_number)`, and a username unique within the sign-in namespace. Portal access state is modelled separately from enrolment status. The first implementation slice still excludes portal screens; only the model is fixed. Permanent deletion remains subject to an approved retention policy before production (`docs/ENROLMENT_PERMISSION_MODEL.md` 5.2).
+- **Dependencies:** The student portal authentication approach, which Supabase Auth cannot satisfy natively — see D-020. The class and placement model in `docs/ENROLMENT_PERMISSION_MODEL.md` 5.3 and E1.
+- **Approval:** Project owner.
+
+### D-020: Student portal authentication approach
+
+- **Status:** Proposed
+- **Date:** 2026-10-11
+- **Context:** D-019 requires students to sign in with a username and password without owning, or being required to provide, a personal email address. The project owner directed that this be evaluated against Supabase Auth before implementation, without inventing fake email addresses or building a custom authentication system.
+- **Evidence (verified 2026-10-11 against vendor documentation):**
+  - Supabase Auth identity types are **email, phone, OAuth and SAML**. Password sign-in requires either an email address or a phone number. There is no username identity, and Supabase has stated it does not intend to add username/password as a first-class sign-in mechanism.
+  - *Permanent* users — those able to sign back in after signing out — are tied to a piece of personally identifiable information: an email, a phone number, or a third-party identity. *Anonymous* users cannot sign back in after sign-out and therefore cannot serve as student accounts.
+  - The extension points available without a custom auth system are **Auth Hooks** (Postgres functions; `Before User Created` and `Custom Access Token` are available on Free and Pro) and **third-party authentication** (Clerk, Auth0, Firebase Auth, Cognito, WorkOS), the latter being a separate paid dependency outside D-014.
+  - Phone-based sign-in requires an SMS provider, a paid external dependency; students in the target age group may not hold a phone.
+- **Conflict to resolve:** The requirements "no email required from students", "no invented fake email addresses", "no custom authentication system" and "zero cost" cannot all hold simultaneously through Supabase Auth, because it has no username identity and its only non-third-party permanent identity options are email or phone. At least one constraint must bend.
+- **Proposed decision:** Use **server-mediated username sign-in** over an opaque, platform-controlled, non-personal account identifier, and treat that identifier explicitly as an internal account key rather than an email address. **Owner approval of this interpretation is required**, or one of the alternatives below must be chosen.
+  - The account identifier lives in a reserved, provably non-deliverable namespace that the platform controls and that a third party cannot register or hijack.
+  - Email-based flows for these accounts are disabled. Recovery is administrator-assisted under D-019 (section 8.3); no mail is ever sent to the identifier.
+  - Sign-in runs in a trusted server route: it receives the username and password, resolves the username to the account identifier from a protected table, calls Supabase `signInWithPassword`, and establishes the session cookie through `@supabase/ssr`. The secret key never reaches the browser.
+  - The password is passed only to Supabase Auth. The platform never stores, logs, or displays it. This is **not** a custom password-storage mechanism.
+- **Reasoning:** This is the only option that keeps Supabase Auth as the identity provider, keeps student accounts recoverable, requires no email from the student, and adds no paid dependency. All username logic is confined to trusted server code and one protected table — a small, auditable surface.
+- **Alternatives:** *Supabase phone authentication* — requires a paid SMS provider (D-014) and assumes students hold phone numbers; rejected for the target age group. *Third-party identity provider* — paid, adds a second identity system and operational surface with no driving requirement; rejected. *Custom authentication in the application* — rejected outright by `docs/SECURITY_AND_PRIVACY.md` 6 and `AGENTS.md` 5. *Requiring a personal email after all* — rejected by the owner's requirement and contrary to data minimisation. *Deferring the student portal entirely* — retained as the immediate practical path: Phase 1 and the first slice use staff email/password authentication only, so portal authentication is needed only when the portal slice begins.
+- **Consequences:** The account identifier is an internal implementation detail and must be documented as such, so no later contributor treats it as a real mailbox or enables email delivery to it. Username resolution becomes a security-sensitive server path that must be rate-limited and must not leak account existence. Tenant isolation, RLS and the staff authentication model are unaffected. If the interpretation is rejected, the portal requires either a paid SMS provider or a paid identity provider, and D-014 must be revisited.
+- **Dependencies:** A Supabase project to prove the flow (`signInWithPassword` against a server-created account, session cookies via `@supabase/ssr`, disabled email flows), owner approval of the identifier trade-off, and confirmation that the chosen reserved namespace passes Supabase's email-format validation.
+- **Approval:** **Pending — project owner.** Not approved. Do not implement until approved and proven against a real project.
+
 ## 5. Decisions Required Before Relevant Features
 
 These questions do not all need to be answered immediately. Resolve each one before it materially affects implementation.
@@ -197,7 +239,7 @@ These questions do not all need to be answered immediately. Resolve each one bef
 
 - The first complete vertical slice is student enrolment including class placement (D-018). Any change to that choice is a scope decision.
 - Which modules beyond enrolment are required for the first usable release?
-- Which user roles and permissions are necessary initially? Required before enrolment authorization is implemented.
+- Which user roles and permissions are necessary initially? Required before enrolment authorization is implemented. Still open; the interim default is in `docs/ENROLMENT_PERMISSION_MODEL.md` 5.1 and 6.
 - Which features should be available without additional payment or subscription arrangements?
 
 ### School operations
@@ -212,11 +254,12 @@ These questions do not all need to be answered immediately. Resolve each one bef
 - Which roles exist at school level?
 - Which platform-level administrative capabilities are required?
 - What is the approved process for inviting, suspending, and removing users?
+- What is the approved approach for student portal authentication, given that Supabase Auth has no username identity and requires email or phone for a permanent account? See D-020 (Proposed) and `docs/ENROLMENT_PERMISSION_MODEL.md` 8.4.
 - Membership in more than one school is excluded from the first release by D-017. The conditions under which it may be introduced remain open.
 
 ### Data and privacy
 
-- Which learner and staff fields are necessary?
+- Which learner and staff fields are necessary? **Partially resolved:** the learner registration fields are settled by D-019; staff fields and any non-enrolment learner fields remain open.
 - Which records must be retained, archived, exported, or deleted?
 - Which privacy notices, agreements, and legal requirements apply?
 - Which third-party services will process personal information?

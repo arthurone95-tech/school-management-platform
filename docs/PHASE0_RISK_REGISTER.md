@@ -119,14 +119,16 @@ Severity follows `docs/ROADMAP_AND_TESTING.md` 8.
 
 **Control:** Requires owner authorization. Committing is not covered by file-edit permission (`AGENTS.md` 15, `AUTOMATION_WORKFLOW.md` 4E).
 
+**Resolved 2026-10-11:** the documentation baseline was committed locally as `2bca391` and not pushed. Phase 1 must create a `.gitignore` before dependencies are installed or the application is scaffolded.
+
 ## 5. Unresolved Decisions That Block Safe Progress
 
 | ID | Decision | Status | Blocks |
 |---|---|---|---|
 | D-011 | Application framework (Next.js + TypeScript) | **Confirmed** 2026-10-11 | — |
 | — | First end-to-end workflow | **Confirmed** — D-018, enrolment | — |
-| — | Which school roles are required initially | **Open** (`docs/DECISIONS.md` 5) | **Blocks Phase 1** — required before enrolment authorization is implemented |
-| — | Baseline commit approval | **Open** | **Blocks Phase 1** |
+| — | Which school roles are required initially | **Open, no longer blocking** — interim defaults approved 2026-10-11 (`docs/ENROLMENT_PERMISSION_MODEL.md` 5.1, 6). Actual roles remain provisional | Authorization code must not hard-code an unvalidated role set |
+| — | Baseline commit approval | **Resolved 2026-10-11** — documentation baseline committed as `2bca391` | — |
 | — | RPO / RTO | **Open** (`docs/DATABASE_DOCUMENTATION.md` 11) | Production readiness only |
 | — | Hosting provider | **Open** (D-013) | Deployment only |
 | — | Supabase signing-key mode | **Unverified** — section 10.1 | Affects session method choice; verify at project creation |
@@ -227,7 +229,7 @@ Costs that will arise later and are **not** committed: the production plan, poin
 | Confirmed implementation stack or documented alternative | **Complete** — D-011 confirmed, D-012 and D-015 already confirmed |
 | Initial risk list and test plan | Complete (sections 4 and 7) |
 
-Phase 0 exit criteria are met. Two follow-on decisions still block Phase 1 and are recorded in section 5: the school roles required for the first release, and approval of the baseline commit.
+Phase 0 exit criteria are met. The two follow-on items recorded in section 5 were resolved or downgraded on 2026-10-11: the documentation baseline was committed as `2bca391`, and the role question no longer blocks Phase 1 because interim defaults were approved (D-019, `docs/ENROLMENT_PERMISSION_MODEL.md` 5.1). Actual school roles remain provisional and must not be hard-coded as validated policy.
 
 ## 10. Appendices
 
