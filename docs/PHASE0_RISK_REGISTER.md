@@ -40,11 +40,12 @@ The repository contains documentation only. No application has been built.
 
 | Component | Finding | Source |
 |---|---|---|
-| Next.js | 16.3.8 is Active LTS (security release 2026-09-30); 15.5.27 is Maintenance LTS | nextjs.org September 2026 security release |
+| Next.js | **Installed: 16.4.0** (owner confirmed 2026-10-11, retained over 16.3.8). 16.3.8 was Active LTS (security release 2026-09-30); 15.5.27 is Maintenance LTS | local `package.json`; nextjs.org September 2026 security release |
 | Node.js requirement | 20.9 or later | nextjs.org installation docs |
-| TypeScript requirement | 5.1 or later | nextjs.org |
+| TypeScript requirement | 5.1 or later; local 5.9.3 | nextjs.org; local |
 | `@supabase/ssr` | v0.12.7 current; replaces deprecated `@supabase/auth-helpers-*` | supabase/ssr |
 | Local Node.js | v24.16.0 satisfies the requirement | local |
+| React | 19.3.0 installed; bundled with the Next.js 16.4.0 scaffold | local |
 
 ### 3.2 Compatibility verdict
 
@@ -121,17 +122,37 @@ Severity follows `docs/ROADMAP_AND_TESTING.md` 8.
 
 **Resolved 2026-10-11:** the documentation baseline was committed locally as `2bca391` and not pushed. Phase 1 must create a `.gitignore` before dependencies are installed or the application is scaffolded.
 
+### R-08 — Student sign-in uses a synthetic auth identity in a reserved namespace
+
+**Severity:** Medium
+**Evidence:** D-020 (approved 2026-10-11). Supabase Auth requires an email- or phone-shaped identity for a permanent account; the approved design stores each student account against an opaque identifier in the RFC 2606 `.invalid` domain and ships a server-mediated school-code + username sign-in path.
+
+**Impact:** Two risks. First, if Supabase's email validator rejects the reserved namespace, or if a signing-up user can create accounts in it, the namespace could be unusable or abusable. Second, the `(school code, username)` resolution path is a new authentication surface: if it leaks whether an account exists, or is not rate-limited, it becomes an enumeration and brute-force target.
+
+**Control:** Before the portal slice is implemented, verify against a real project that (a) the chosen namespace passes Supabase email validation, (b) email flows are disabled for these accounts, and (c) a `Before User Created` Auth Hook rejects sign-ups that do not originate from the trusted server path. Rate-limit the resolution path and return a uniform failure that does not disclose whether the school code, username or account exists. Unit-test normalisation and resolution logic where it is pure.
+
+### R-09 — Refreshed session responses must not be cached by a CDN or proxy
+
+**Severity:** High (if misconfigured)
+**Evidence:** `@supabase/ssr` documentation (2026-10-11): the cookie `setAll` callback receives `Cache-Control`, `Expires` and `Pragma` headers that **must** be applied to the response; otherwise a shared cache can store a response carrying a `Set-Cookie` for one user and serve it to another, signing the second user in as the first.
+
+**Impact:** Cache poisoning of authenticated responses can cause cross-user session leakage — a tenant-isolation and account-takeover class defect.
+
+**Control:** Apply the cache headers returned by `setAll` in the Next.js `proxy.ts` and in any route handler that refreshes a session. Never cache authenticated responses or per-school data in a shared cache. Review `cacheComponents` and framework caching defaults before introducing authenticated pages (see `docs/PHASE0_RISK_REGISTER.md` 10.2).
+
 ## 5. Unresolved Decisions That Block Safe Progress
 
 | ID | Decision | Status | Blocks |
 |---|---|---|---|
-| D-011 | Application framework (Next.js + TypeScript) | **Confirmed** 2026-10-11 | — |
+| D-011 | Application framework (Next.js + TypeScript) | **Confirmed** 2026-10-11 — installed 16.4.0 | — |
+| D-020 | Student portal authentication approach | **Confirmed** 2026-10-11 (school code + username over an internal non-deliverable identifier) | Portal slice only; see R-08 |
 | — | First end-to-end workflow | **Confirmed** — D-018, enrolment | — |
 | — | Which school roles are required initially | **Open, no longer blocking** — interim defaults approved 2026-10-11 (`docs/ENROLMENT_PERMISSION_MODEL.md` 5.1, 6). Actual roles remain provisional | Authorization code must not hard-code an unvalidated role set |
 | — | Baseline commit approval | **Resolved 2026-10-11** — documentation baseline committed as `2bca391` | — |
 | — | RPO / RTO | **Open** (`docs/DATABASE_DOCUMENTATION.md` 11) | Production readiness only |
 | — | Hosting provider | **Open** (D-013) | Deployment only |
 | — | Supabase signing-key mode | **Unverified** — section 10.1 | Affects session method choice; verify at project creation |
+| — | Supabase project creation | **Awaiting owner authorization** | Auth, migrations, RLS and tenant-isolation tests cannot be verified without it |
 
 None of these can be resolved by the agent. Each requires an owner decision.
 
@@ -272,3 +293,12 @@ Supabase is retiring the legacy `anon` and `service_role` keys in favour of publ
 5. Auth email delivery and redirect URL configuration for invitations (D-018 requires enrolment roles to be invited).
 
 None of this may be assumed. Record the verified result in `docs/DECISIONS.md` when it is known.
+
+### 10.2 Next.js caching posture (reviewed 2026-10-11)
+
+`next.config.ts` retained the scaffold defaults `cacheComponents: true` and `partialPrefetching: true`. This review records the security posture for caching before any authenticated page is introduced.
+
+- **`cacheComponents`** makes caching explicit: in a Cache-Components app, data is dynamic by default and is only reused across requests when a component or function is explicitly marked with `"use cache"` (optionally with `cacheLife`/`cacheTag`). This is a safer default than implicit caching, because a reviewer can see every cache boundary in the source.
+- **Rule:** per-school or authenticated data must never be marked with `"use cache"` unless the cache key includes the tenant (school) and is invalidated on membership, role or session change. No authenticated data is cached in a shared cache by default.
+- **Session responses:** the cookie `setAll` callback in `proxy.ts` and any session-refreshing route handler must apply the `Cache-Control`, `Expires` and `Pragma` headers it receives, and must return the response that carries the refreshed cookies (see R-09). This is the specific mechanism that prevents a proxy/CDN from caching one user's `Set-Cookie` and serving it to another.
+- **Not yet verified:** there are no authenticated pages at this stage, so this posture has not been exercised against real sessions. It must be re-verified with an authenticated request when the authentication foundation lands, and covered by a regression test once a Supabase project exists.

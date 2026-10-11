@@ -1,10 +1,10 @@
 # Enrolment Field, Identifier and Permission Model
 
 **Project:** School Management Platform\
-**Document status:** Sections 4, 7 and 8 approved; sections 5 and 9 remain provisional\
-**Version:** 0.3\
+**Document status:** Sections 4, 7 and 8 approved; section 5 approved defaults; section 6 remains provisional; section 9 has one open item (E1)\
+**Version:** 0.4\
 **Date:** 2026-10-11\
-**Scope:** Student enrolment, class placement, and student portal account access (D-018, D-019)
+**Scope:** Student enrolment, class placement, and student portal account access (D-018, D-019, D-020)
 
 ## 1. Purpose and Standing
 
@@ -42,6 +42,7 @@ Evidence base: code and documentation inspection of **two** systems — **YAW Ac
 | Section 4 — mandatory safeguards | **Binding.** Not negotiable per school |
 | Section 5 — implementation defaults | **Approved defaults** (D-019 and owner approval, 2026-10-11). Revisable without a schema redesign |
 | Sections 7 and 8 — fields, identifiers, account access | **Approved** (D-019) |
+| Section 8.4 — student portal authentication approach | **Approved** (D-020, 2026-10-11) |
 | Section 6 — school-specific roles, approval chains, class structure | **Provisional** — actual responsibilities are unvalidated |
 | Section 9 — unresolved decisions | **Open** unless marked otherwise |
 
@@ -132,20 +133,22 @@ Fields deliberately **not** collected: medical, disability, biometric and financ
 
 ### 7.2 Identifiers
 
-Two separate identifiers, with different purposes. Neither is a password and neither proves account ownership.
+Separate identifiers, with different purposes. None is a password and none proves account ownership.
 
 | Identifier | Purpose | Uniqueness | Exposure |
 |---|---|---|---|
-| Internal student ID | Stable key used to link database records | Unique within the platform | Not user-facing |
+| Internal student ID | Stable key used to link database records; also the base of the internal Supabase account identifier (8.4) | Unique within the platform | Not user-facing |
 | School registration number | Readable identifier used in school administration | Unique **within the school** only | Visible to authorised school users |
-| Login username | Student sign-in name | Unique across the login namespace (see 7.3) | Visible to the student |
+| School code | Tenant reference used with the username at student sign-in (8.4) | Unique within the platform | Visible to the school's users; not a secret |
+| Login username | Student sign-in name | Unique **within the school** — composite `(school_id, username)` (see 7.3) | Visible to the student |
+| Internal account identifier | Supabase Auth identity for the student account (8.4) | Unique within the platform | Never shown to any user; server-only |
 
-Knowing an internal ID, a registration number, or a username grants **no** access. None of them may be used as proof of identity for password recovery.
+Knowing an internal ID, a registration number, a school code, or a username grants **no** access. None of them may be used as proof of identity for password recovery. The internal account identifier is never exposed to any user at all.
 
 ### 7.3 Uniqueness and duplicate detection
 
 - **School registration number:** composite unique constraint on `(school_id, registration_number)`. It is not assumed to be globally unique.
-- **Username:** generated from the student's name, normalised consistently (case, spacing, and characters), with an automatic suffix when a collision occurs. Usernames must be unique within the sign-in namespace, because sign-in takes only a username.
+- **Username:** generated from the student's name, normalised consistently (case, spacing, and characters), with an automatic suffix when a collision occurs. Usernames must be unique **within their school** (composite `(school_id, username)`), because sign-in takes a school code together with the username (8.4).
 - **Learner duplicates:** identify a possible existing learner by matching available identifying fields and surface the candidates to the administrator. Merging or overwriting is **never automatic**.
 
 ## 8. Student Account and Portal Access (Approved)
@@ -164,14 +167,14 @@ Students need individual accounts to access their own dashboard and permitted sc
 ### 8.2 Activation workflow
 
 1. An authorised administrator registers the student.
-2. The system generates the student's identifiers and login username (7.3).
+2. The system generates the student's identifiers and login username (7.3). The **school code** (7.2) is assigned once when the school is created, not per student.
 3. Portal access remains separately controlled from enrolment status.
 4. When the school is ready, an authorised administrator initiates account activation.
 5. The system generates a **single-use activation credential** and presents the activation instructions to the administrator.
 6. The administrator copies or shares the instructions through an available channel such as WhatsApp or SMS. **No messaging integration exists or is assumed** (D-014 is open).
 7. The student opens the activation page, enters the activation code if required, chooses a password, confirms it, and activates the account.
 8. The system confirms success and directs the student to the login page.
-9. The student signs in with the username and password.
+9. The student signs in with the school code, username and password.
 
 Requirements for the activation credential:
 
@@ -193,9 +196,19 @@ The administrator must **never** see or retrieve the student's chosen password. 
 - **Date of birth, student name, or other personal information alone is never sufficient** to authorise password recovery.
 - Administrator-assisted resets and account-security events are audited.
 
-### 8.4 Authentication approach
+### 8.4 Authentication approach (Approved — D-020)
 
-Supabase Auth does not support username/password sign-in natively; its identity types are email, phone, OAuth and SAML. The approach for student sign-in is therefore a distinct architecture decision, **not yet approved**. Options, trade-offs and a recommendation are recorded in `docs/DECISIONS.md` D-020.
+Supabase Auth does not support username/password sign-in natively; its identity types are email, phone, OAuth and SAML. The approved approach is **server-mediated school-code + username sign-in**, with Supabase Auth still performing password verification and session issuance. Full reasoning, evidence and alternatives are in `docs/DECISIONS.md` D-020.
+
+The mechanism:
+
+- **Sign-in input:** school code, username, password. The student never sees or enters the internal account identifier.
+- **Resolution:** a trusted server route resolves `(school code, username)` to the internal account identifier from a protected, RLS-restricted mapping table, then calls Supabase `auth.signInWithPassword`. The publishable key is used; the server-only secret key never reaches the browser.
+- **Internal account identifier:** Supabase requires an email- or phone-shaped identity for a permanent account, so each student account is stored against an opaque identifier derived from the platform-generated internal student ID. It lives in the RFC 2606 reserved `.invalid` domain (for example `<internal-student-id>@students.invalid`), which can never be registered or delivered to. It is **never shown to any user as an email address**, never used for delivery, and email flows (confirmation, magic link, recovery) are disabled for these accounts.
+- **Password:** passed only to Supabase Auth. The platform never stores, logs, or displays it. This is not a custom password-storage mechanism.
+- **Namespace protection:** a Supabase `Before User Created` Auth Hook must reject any sign-up that did not come through the trusted server path, so the reserved namespace cannot be populated by other means.
+- **Activation and recovery consistency:** activation (8.2) and administrator-assisted recovery (8.3) issue one-time credentials that let the **student** choose a new password through a server route. The server uses the server-only secret key to apply the student-chosen password via the Supabase admin API only after the one-time credential is verified; it never generates, sees, or stores the permanent password itself.
+- **Enumeration and rate limiting:** the resolution path must be rate-limited and must not reveal whether a school code, username or account exists.
 
 This does not block Phase 1. Staff authentication is ordinary email/password and is unaffected, and the student portal is not part of the first implementation slice.
 
@@ -210,14 +223,14 @@ Only decisions that materially affect the enrolment workflow or its database str
 | E3 | One class per learner, or many? | **Resolved as a default** — one current placement, history retained (5.5) | Shape of the placement table | No |
 | E4 | Does correction need second approval? | **Resolved as a default** — off by default, configurable per school (5.4). Audit is mandatory either way | Whether an approval queue is needed | No |
 | E5 | Final school role set | **Open** — administrator and staff, permissions as data (5.1) | Seed data and the permission catalogue, not the schema | No |
-| E6 | Student portal authentication approach | **Proposed** — D-020 | Portal sign-in implementation. Not in the first slice | No |
+| E6 | Student portal authentication approach | **Resolved** — D-020, school-code + username over an internal non-deliverable identifier (8.4) | Portal sign-in implementation. Not in the first slice | No |
 
 ### What can safely wait
 
 - Final role names and the permission catalogue — configuration, not schema.
 - Approval workflow — configurable, default off.
 - Stream, level or year structures — add as configuration later.
-- Student portal authentication mechanism — D-020, needed only when the portal slice starts.
+- Student portal authentication **implementation** — the approach is settled by D-020, but the code is needed only when the portal slice starts.
 - Grading, fees, attendance, reporting, notifications — out of scope entirely.
 
 ## 10. Out of Scope
@@ -238,5 +251,5 @@ The student **portal account model** in section 8 is approved for design coheren
 
 1. Sections 4, 5, 7 and 8 are approved; implement them as the enrolment slice is built.
 2. Leave section 6 provisional and revisit when school responsibilities are actually validated.
-3. Obtain owner approval for the student portal authentication approach (D-020) before portal sign-in is implemented.
+3. Implement the D-020 approach (8.4) when the portal slice starts, and verify it against a real Supabase project first.
 4. Resolve E1 (year-scoped placement) before the placement schema is finalised for production.

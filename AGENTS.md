@@ -34,7 +34,7 @@ Use these documents as the primary project references:
 - `docs/DEPLOYMENT_AND_OPERATIONS.md`: Environments, deployment, backups, and operational procedures.
 - `docs/ROADMAP_AND_TESTING.md`: Implementation sequence and testing requirements.
 - `docs/PHASE0_RISK_REGISTER.md`: Phase 0 stack validation, risk register, and initial test plan.
-- `docs/ENROLMENT_PERMISSION_MODEL.md`: Enrolment field, identifier, account and permission model. Sections 4, 7 and 8 are approved (D-019); section 6 (school-specific roles and approval policy) is provisional.
+- `docs/ENROLMENT_PERMISSION_MODEL.md`: Enrolment field, identifier, account and permission model. Sections 4, 7 and 8 are approved (D-019); section 5 holds approved defaults; the student sign-in approach in 8.4 is approved (D-020); section 6 (school-specific roles and approval policy) is provisional.
 - `docs/DECISIONS.md`: Confirmed architectural decisions, unresolved questions, and decision history.
 
 Not every document may be present at every stage. Inspect the available files and do not assume that a missing document has been completed.
