@@ -152,7 +152,7 @@ Severity follows `docs/ROADMAP_AND_TESTING.md` 8.
 | — | RPO / RTO | **Open** (`docs/DATABASE_DOCUMENTATION.md` 11) | Production readiness only |
 | — | Hosting provider | **Open** (D-013) | Deployment only |
 | — | Supabase signing-key mode | **Unverified** — section 10.1 | Affects session method choice; verify at project creation |
-| — | Supabase project creation | **Awaiting owner authorization** | Auth, migrations, RLS and tenant-isolation tests cannot be verified without it |
+| — | Supabase project creation | **Awaiting owner authorization** — the first migration and its RLS model are authored and locally verified (section 10.3), but not applied to any project | Verification against real Supabase Auth, Auth Hooks, signing keys and plan settings still requires it |
 
 None of these can be resolved by the agent. Each requires an owner decision.
 
@@ -256,7 +256,7 @@ Phase 0 exit criteria are met. The two follow-on items recorded in section 5 wer
 
 ### 10.1 Session verification method (verified 2026-10-11)
 
-**No Supabase project has been created or configured, and no credential has been read.** As of 2026-10-11 the repository contains the client foundation only: `src/lib/supabase/` (browser, server, `server-only` admin, and environment access), and `src/proxy.ts` for session refresh (R-01, R-09). There is still no `supabase/` directory, no `config.toml`, no `.env`, and no Supabase URL or key value. No project configuration could therefore be inspected directly.
+**No Supabase project has been created or configured, and no credential has been read.** As of 2026-10-11 the repository contains the client foundation (`src/lib/supabase/` and `src/proxy.ts` for session refresh — R-01, R-09) and the first schema migration (`supabase/migrations/20261011000001_enrolment_foundation.sql`, see section 10.3). There is still no `supabase/config.toml`, no `.env`, and no Supabase URL or key value, and nothing has been applied to any project. No project configuration could therefore be inspected directly.
 
 The proxy fails loudly in production when the public configuration is missing, and passes through in development so the local scaffold remains usable before a project exists. This was verified by running the production build with and without configuration.
 
@@ -304,3 +304,17 @@ None of this may be assumed. Record the verified result in `docs/DECISIONS.md` w
 - **Rule:** per-school or authenticated data must never be marked with `"use cache"` unless the cache key includes the tenant (school) and is invalidated on membership, role or session change. No authenticated data is cached in a shared cache by default.
 - **Session responses:** the cookie `setAll` callback in `proxy.ts` and any session-refreshing route handler must apply the `Cache-Control`, `Expires` and `Pragma` headers it receives, and must return the response that carries the refreshed cookies (see R-09). This is the specific mechanism that prevents a proxy/CDN from caching one user's `Set-Cookie` and serving it to another.
 - **Not yet verified:** there are no authenticated pages at this stage, so this posture has not been exercised against real sessions. It must be re-verified with an authenticated request when the authentication foundation lands, and covered by a regression test once a Supabase project exists.
+
+### 10.3 Local database verification with a WASM PostgreSQL (2026-10-11)
+
+The first migration, `supabase/migrations/20261011000001_enrolment_foundation.sql` (the enrolment slice at `docs/DATABASE_DOCUMENTATION.md` 8), is verified locally without a Supabase project using PGlite (`@electric-sql/pglite`), a WASM build of PostgreSQL run from the test suite. `tests/database/` boots a fresh database, recreates the small part of the Supabase environment the migration depends on (`anon`, `authenticated` and `service_role` roles, `auth.users`, and an `auth.uid()` reading the request JWT subject), applies the migration, then asserts the security invariants:
+
+- RLS is enabled on all eight tenant-owned tables, and the credential table has no client policy.
+- A school administrator and a staff member each see only their own school's learners; an authenticated user with no membership and an anonymous request see nothing.
+- An insert naming another school's id is refused by the RLS `WITH CHECK`.
+- A learner from one school cannot be placed in another school's class (composite foreign key).
+- A learner cannot be hard-deleted, and a second open placement for one learner is refused.
+- Enrolment creates and edits write audit events naming the acting user, recording changed column names only (never personal values), and those events cannot be written or erased from an authenticated session.
+- Portal credentials are reachable only through the server-only role, and a suspended membership loses access immediately.
+
+**What this does not prove.** PGlite is not Supabase. It does not exercise GoTrue, the `Before User Created` Auth Hook, publishable/secret key behaviour, asymmetric signing keys, Supabase's deployed default grants, the Free-plan connection pooler, or the Auth schema as provisioned. Those remain outstanding and must be verified against the non-production project when it is authorised. Passing these tests is evidence of policy logic, not proof that the deployed database is configured as intended.

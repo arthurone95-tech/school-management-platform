@@ -2,7 +2,7 @@
 
 **Project:** School Management Platform\
 **Document status:** Initial functional requirements\
-**Version:** 1.1
+**Version:** 1.2
 
 ## 1. Purpose
 
@@ -168,6 +168,8 @@ Migrations must be:
 - Safe for existing data or accompanied by an explicit data-migration plan.
 - Tested against a non-production database.
 - Compatible with the relevant application deployment strategy.
+
+While a Supabase project is unavailable, migration SQL is also verified locally by applying it to a WASM PostgreSQL (PGlite) and asserting the tenant-isolation and audit guarantees under simulated `anon`, `authenticated` and `service_role` sessions (`docs/PHASE0_RISK_REGISTER.md` 10.3). Local verification proves policy logic only; it does not replace testing against a real non-production Supabase project.
 
 Do not edit production schema manually as a substitute for recording the change in version control.
 

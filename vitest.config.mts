@@ -16,7 +16,11 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx", "tests/**/*.test.ts"],
+    // The database suite boots a WASM PostgreSQL instance and applies the
+    // migration, which is slower than a unit test to start.
+    hookTimeout: 120_000,
+    testTimeout: 60_000,
   },
   resolve: {
     alias: {
