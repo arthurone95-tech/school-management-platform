@@ -283,6 +283,7 @@ Supabase is retiring the legacy `anon` and `service_role` keys in favour of publ
 | `NEXT_PUBLIC_SUPABASE_URL` | Public |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Public |
 | `SUPABASE_SECRET_KEY` | **Server-only. Never `NEXT_PUBLIC_`. Never in the client bundle.** |
+| `PORTAL_CREDENTIAL_SECRET` | **Server-only.** Keys the HMAC that hashes one-time activation and reset credentials (`docs/ENROLMENT_PERMISSION_MODEL.md` 8.2). Never `NEXT_PUBLIC_`. |
 
 `.env.example` must use these names with placeholder values only, per `docs/SECURITY_AND_PRIVACY.md` 8.
 
