@@ -102,6 +102,8 @@ Never store plaintext passwords or implement a custom password-storage mechanism
 
 Do not rely on hiding routes, buttons, or navigation items to protect data.
 
+**Self-registration control (verified 2026-10-12 against `school-management-dev`).** Public sign-up is disabled on the project, and a `Before User Created` Auth Hook refuses any account creation that the platform server did not provision (the server stamps `app_metadata.provisioned_by`). This protects the internal `students.invalid` identity namespace used by D-020 from being populated by any public path and is defence in depth behind the disabled sign-up setting. The hook runs on the sign-up path; the service-role admin API is protected by the server-only secret key and by this policy (server-mediated provisioning). Record: `docs/PHASE0_RISK_REGISTER.md` 10.4.
+
 ## 7. Authorization and Tenant Isolation
 
 Use defense in depth:

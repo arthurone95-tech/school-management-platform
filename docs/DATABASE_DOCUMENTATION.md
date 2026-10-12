@@ -171,6 +171,13 @@ Migrations must be:
 
 While a Supabase project is unavailable, migration SQL is also verified locally by applying it to a WASM PostgreSQL (PGlite) and asserting the tenant-isolation and audit guarantees under simulated `anon`, `authenticated` and `service_role` sessions (`docs/PHASE0_RISK_REGISTER.md` 10.3). Local verification proves policy logic only; it does not replace testing against a real non-production Supabase project.
 
+As of 2026-10-12 the migrations are also applied to and verified **live** against the non-production dev project `school-management-dev` and recorded in `supabase_migrations.schema_migrations`:
+
+- `20261011000001_enrolment_foundation.sql` — the enrolment slice described in this document: `schools`, `classes`, `learners`, `school_members`, `learner_class_placements`, `learner_portal_accounts`, `learner_portal_credentials`, `role_permissions`, `audit_events`, with RLS, policies, the audit trigger and the portal-credential store.
+- `20261011000002_portal_signup_guard.sql` — a `public.before_user_created(jsonb)` Auth Hook that allows account creation only when the platform server has stamped `app_metadata.provisioned_by = 'school-platform'`, plus the enabling project settings (`disable_signup = true`, hook URI `pg-functions://postgres/public/before_user_created`). The hook is invoked by GoTrue on the sign-up path; the service-role admin API is protected by the server-only secret key.
+
+Full live verification results: `docs/PHASE0_RISK_REGISTER.md` 10.4.
+
 Do not edit production schema manually as a substitute for recording the change in version control.
 
 For breaking changes, use a staged migration where practical: add the new structure, migrate or backfill data, update application code, verify behavior, and remove obsolete structures only after confirming they are no longer required.

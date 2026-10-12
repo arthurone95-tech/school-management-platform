@@ -235,6 +235,47 @@ For each implemented endpoint or server operation, document:
 
 Document actual implemented behavior. Do not describe planned endpoints as operational.
 
+### 14.1 `POST /api/admin/portal-credentials` — issue a one-time portal credential (implemented 2026-10-12)
+
+- **Purpose:** an administrator issues a single-use activation or reset credential for a learner. The code is shown to the student once; the administrator never sees or sets the password.
+- **Authentication:** Supabase session required (`auth.getUser()`, never an unverified cookie). Not signed in → `401`.
+- **School context:** taken from the learner row (never from the request), so a caller cannot aim an authorised action at another school.
+- **Required permission:** `learner.portal.manage` for the learner's school, checked via the `has_school_permission` RPC. → `403` otherwise.
+- **Request schema:** `{ "learnerId": string, "purpose": "activation" | "reset" }`.
+- **Response schema (201):** `{ "ok": true, "code": string, "expiresAt": ISO-8601, "purpose": string }`. The raw code is returned exactly once and is never stored or logged; only its HMAC is stored.
+- **Validation rules:** both fields required; `purpose` must be one of the two values; missing/malformed → `400` `Invalid request.`; unknown learner → `404`.
+- **Side effects:** for `activation`, provisions the learner's portal account (Auth identity + protected mapping) if missing; revokes any previous live credential for the same learner and purpose, then inserts the new hashed credential with an expiry (default 72 hours).
+- **Idempotency/concurrency:** issuing again replaces the previous pending credential of the same purpose rather than stacking codes.
+- **Rate limits:** session- and permission-gated; no additional limiter.
+- **Database tables:** `learners`, `learner_portal_accounts`, `learner_portal_credentials`, `audit_events`.
+- **Tests:** `tests/live/03-portal-flow.mjs` (401/403/400/201 paths) and unit tests for issuance logic.
+
+### 14.2 `POST /api/portal/activate` — activate or recover with a one-time code (implemented 2026-10-12)
+
+- **Purpose:** a student redeems a one-time activation code (or administrator-assisted recovery code) by choosing a password. The administrator never supplies or sees the password.
+- **Authentication:** none (public endpoint); protected by code secrecy, atomic single-use and rate limiting.
+- **Request schema:** `{ "code": string, "newPassword": string, "confirmPassword": string }`.
+- **Response schema (200):** `{ "ok": true, "purpose": "activation" | "reset", "message": string }`.
+- **Validation rules:** code normalised (formatting chars removed) and must match the generation alphabet with a minimum length; passwords must match; password length 8–72 characters (interim policy). Failures are **uniform**: an expired, used, revoked, malformed or unknown code all yield the same `400` message, so the endpoint cannot be probed.
+- **Side effects:** the credential is claimed **atomically** (single-use) before the password is applied; if the password update fails, the claim is released so the student can retry.
+- **Idempotency/concurrency:** concurrent submissions with the same code cannot both succeed.
+- **Rate limits:** sliding window keyed by client address + code → `429` `Too many attempts…`.
+- **Database tables:** `learner_portal_credentials` (claim), Auth `users` (password update).
+- **Tests:** `tests/live/03-portal-flow.mjs` (single-use, expiry, mismatch, unknown code, uniform messages), unit tests for `parseActivateInput`.
+
+### 14.3 `POST /api/portal/sign-in` — student sign-in (implemented 2026-10-12)
+
+- **Purpose:** school-code + username + password sign-in (D-020). The server resolves `(school code, username)` to the internal account identifier through a protected mapping, then asks Supabase Auth to verify the password and issue the session.
+- **Authentication:** none (public endpoint); protected by password verification, uniform failures and rate limiting. On success the Supabase session cookies are set via `@supabase/ssr` exactly as for any Supabase session.
+- **Request schema:** `{ "schoolCode": string, "username": string, "password": string }`.
+- **Response schema (200):** `{ "ok": true, "portal": "/portal" }`.
+- **Validation rules:** school code normalised (trimmed, upper-cased, hyphens/spaces removed; ≤ 10 characters); username trimmed, lower-cased, ≤ 32 characters; password length ≥ 1 and ≤ 72 (correctness is decided by Auth).
+- **Error behaviour:** a wrong school code, username or password all return the same `401` uniform message, and an unknown school code or username resolves to the same failure — no enumeration. Malformed input → `400`; unexpected server error → `500` with the same uniform message; rate limit → `429`.
+- **Side effects:** issues/refreshes the session (sets cookies) on success.
+- **Rate limits:** sliding window keyed by client address + `schoolCode:username` (identity-hashed, never logs the pair).
+- **Database tables:** `schools`, `learners`, `learner_portal_accounts` (read); Auth sign-in.
+- **Tests:** `tests/live/03-portal-flow.mjs` (success sets a session cookie; each wrong credential variant → uniform 401), unit tests for `parseSignInInput`.
+
 ## 15. Implementation Gate
 
 Implement only the operations required for the selected end-to-end workflow.

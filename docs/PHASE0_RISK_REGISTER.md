@@ -131,6 +131,8 @@ Severity follows `docs/ROADMAP_AND_TESTING.md` 8.
 
 **Control:** Before the portal slice is implemented, verify against a real project that (a) the chosen namespace passes Supabase email validation, (b) email flows are disabled for these accounts, and (c) a `Before User Created` Auth Hook rejects sign-ups that do not originate from the trusted server path. Rate-limit the resolution path and return a uniform failure that does not disclose whether the school code, username or account exists. Unit-test normalisation and resolution logic where it is pure.
 
+**Resolved 2026-10-12:** all controls verified against the live dev project (section 10.4): (a) `students.invalid` is accepted by GoTrue for server-provisioned accounts; (b) public sign-up is disabled (`disable_signup = true`) and the `Before User Created` Auth Hook refuses any sign-up the platform server did not stamp (`app_metadata.provisioned_by`); (c) the sign-in path is rate-limited by IP and identity and returns a single uniform failure for a wrong school code, username or password. The hook runs on the sign-up path only; the service-role admin API does not pass through it and is protected by the secret key never leaving the server.
+
 ### R-09 — Refreshed session responses must not be cached by a CDN or proxy
 
 **Severity:** High (if misconfigured)
@@ -151,8 +153,8 @@ Severity follows `docs/ROADMAP_AND_TESTING.md` 8.
 | — | Baseline commit approval | **Resolved 2026-10-11** — documentation baseline committed as `2bca391` | — |
 | — | RPO / RTO | **Open** (`docs/DATABASE_DOCUMENTATION.md` 11) | Production readiness only |
 | — | Hosting provider | **Open** (D-013) | Deployment only |
-| — | Supabase signing-key mode | **Unverified** — section 10.1 | Affects session method choice; verify at project creation |
-| — | Supabase project creation | **Awaiting owner authorization** — the first migration and its RLS model are authored and locally verified (section 10.3), but not applied to any project | Verification against real Supabase Auth, Auth Hooks, signing keys and plan settings still requires it |
+| — | Supabase signing-key mode | **Verified 2026-10-12** — asymmetric (the project JWKS returns an EC key), so `getClaims()` takes the local verification path (section 10.4) | — |
+| — | Supabase project creation | **Created and configured 2026-10-12** — non-production dev project `school-management-dev` (eu-west-1, ACTIVE_HEALTHY, Free plan as created). Migrations 0001 and 0002 applied and recorded in `supabase_migrations.schema_migrations`. Live verification results in section 10.4 | — |
 
 None of these can be resolved by the agent. Each requires an owner decision.
 
@@ -249,12 +251,15 @@ Costs that will arise later and are **not** committed: the production plan, poin
 | Recorded unresolved decisions | Complete (section 5) |
 | Confirmed implementation stack or documented alternative | **Complete** — D-011 confirmed, D-012 and D-015 already confirmed |
 | Initial risk list and test plan | Complete (sections 4 and 7) |
+| Live validation of the secure foundation | **Complete 2026-10-12** — migrations applied to and recorded on `school-management-dev`; auth mechanics (5), portal flow (22), tenant-isolation/RLS (13) and sign-up guard (4) live checks pass (section 10.4) |
 
 Phase 0 exit criteria are met. The two follow-on items recorded in section 5 were resolved or downgraded on 2026-10-11: the documentation baseline was committed as `2bca391`, and the role question no longer blocks Phase 1 because interim defaults were approved (D-019, `docs/ENROLMENT_PERMISSION_MODEL.md` 5.1). Actual school roles remain provisional and must not be hard-coded as validated policy.
 
 ## 10. Appendices
 
 ### 10.1 Session verification method (verified 2026-10-11)
+
+> **Superseded 2026-10-12:** a non-production project (`school-management-dev`) now exists and every item this section marked "must be verified when the project exists" has been verified — see section 10.4. This section remains as the historical record of the pre-project analysis.
 
 **No Supabase project has been created or configured, and no credential has been read.** As of 2026-10-11 the repository contains the client foundation (`src/lib/supabase/` and `src/proxy.ts` for session refresh — R-01, R-09) and the first schema migration (`supabase/migrations/20261011000001_enrolment_foundation.sql`, see section 10.3). There is still no `supabase/config.toml`, no `.env`, and no Supabase URL or key value, and nothing has been applied to any project. No project configuration could therefore be inspected directly.
 
@@ -286,6 +291,8 @@ Supabase is retiring the legacy `anon` and `service_role` keys in favour of publ
 | `PORTAL_CREDENTIAL_SECRET` | **Server-only.** Keys the HMAC that hashes one-time activation and reset credentials (`docs/ENROLMENT_PERMISSION_MODEL.md` 8.2). Never `NEXT_PUBLIC_`. |
 
 `.env.example` must use these names with placeholder values only, per `docs/SECURITY_AND_PRIVACY.md` 8.
+
+**Verified key behaviour 2026-10-12 (details in section 10.4):** with the scoped platform token, the Management API returns the legacy `anon` and `service_role` keys in full, but masks the newer `sb_secret_…` values because the token lacks **API Key Secrets (Read)**. `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` therefore holds the publishable key (maps to the `anon` role) and `SUPABASE_SECRET_KEY` currently holds the legacy `service_role` JWT. Granting the token "API Key Secrets (Read)" would allow switching `SUPABASE_SECRET_KEY` to the `sb_secret_…` key.
 
 **Must be verified when the project exists**
 
@@ -319,3 +326,33 @@ The first migration, `supabase/migrations/20261011000001_enrolment_foundation.sq
 - Portal credentials are reachable only through the server-only role, and a suspended membership loses access immediately.
 
 **What this does not prove.** PGlite is not Supabase. It does not exercise GoTrue, the `Before User Created` Auth Hook, publishable/secret key behaviour, asymmetric signing keys, Supabase's deployed default grants, the Free-plan connection pooler, or the Auth schema as provisioned. Those remain outstanding and must be verified against the non-production project when it is authorised. Passing these tests is evidence of policy logic, not proof that the deployed database is configured as intended.
+
+### 10.4 Live verification against the non-production project (2026-10-12)
+
+**Project.** `school-management-dev` — ref `ysjumhlyqhoobywgqand`, region **eu-west-1**, status **ACTIVE_HEALTHY**, organisation `lztyidujzngnijpsawbf`. Free plan as created; the scoped token is not granted `projects_read`, so plan value is recorded from creation rather than re-read from the list endpoint. The token reaches **only** this project: fake or other refs return 404.
+
+**Migrations applied and recorded.** `20261011000001_enrolment_foundation.sql` (8 tenant tables, RLS, policies, audit trigger, portal-credential store) and `20261011000002_portal_signup_guard.sql` (sign-up guard hook) were applied in single transactions via the Management API and recorded in `supabase_migrations.schema_migrations` (version, statements, name), so a future CLI adoption will not re-apply them. The CLI is not used (no `supabase/config.toml`).
+
+**Key behaviour (token limitation, worked around).** The publishable key works for the `anon` role. The Management API returns the legacy `anon`/`service_role` keys in full, but **masks** the newer `sb_secret_…` values because the token lacks *API Key Secrets (Read)*; using a masked value is rejected as `Invalid API key` under every header arrangement. Worked around with the legacy `service_role` JWT in server-only `SUPABASE_SECRET_KEY`. **User action (optional):** grant the token *API Key Secrets (Read)*, then switch `SUPABASE_SECRET_KEY` to the `sb_secret_…` value.
+
+**Signing-key mode.** `GET /auth/v1/.well-known/jwks.json` returns an **EC key** → asymmetric keys; `getClaims()` takes the local signature-verification path (10.1's expectation confirmed).
+
+**Auth mechanics — `tests/live/01-auth-mechanics.mjs` 5/5 PASS.** Server `createUser` with `<internal-id>@students.invalid` plus the `provisioned_by` marker works; `signInWithPassword` works; the resulting JWT is accepted by PostgREST as `authenticated`; GoTrue rejects a public `.invalid` sign-up (invalid-email error); `deleteUser` cleanup works.
+
+**Sign-up guard — `tests/live/05-signup-guard.mjs` 4/4 PASS, plus function checks.** Public sign-up refused: `422 Signups not allowed for this instance` (`disable_signup = true`). Self sign-up into `students.invalid` refused. Server-provisioned creation still works. Hook `before_user_created` logic verified by direct SQL invocation: allows only `app_metadata.provisioned_by = 'school-platform'`, otherwise returns a `403` with a uniform message (marked / unmarked / no-metadata events all asserted). GoTrue invocation of the hook verified by briefly re-enabling sign-up: a plain sign-up returned `403 Sign-up is not available. Ask your school administrator to create your account.` (the hook's message); sign-up was then re-disabled and the config re-read as disabled. The hook runs on the **sign-up path only**; the service-role admin API does not pass through it and is protected by the key never leaving the server.
+
+**Portal flow — `tests/live/03-portal-flow.mjs` 22/22 PASS.** Issuance without a session → 401; a school-A admin issuing for a school-B learner → 403; invalid purpose → 400; unknown activation code → 400; mismatched passwords → 400; activation with a valid code → 200 with a uniform readiness message; single-use enforced (reuse → 400); expiry enforced (a backdated `issued_at`+`expires_at` code is rejected); school-code + username + password sign-in → 200 with a Supabase session cookie; wrong password / wrong school code / unknown username each → 401 with the same uniform message.
+
+**Tenant isolation / RLS — `tests/live/04-rls-isolation.mjs` 13/13 PASS.** An admin sees exactly its own school's learners; requesting another school's rows returns nothing; cross-school insert is `42501` and cross-school update affects 0 rows; `has_school_permission` is true for the caller's school and false for another; audit events are readable and scoped to the caller's school; anon has no grant (`42501`); a student session (valid JWT, not a school member) lists no learners and has no school permission; the service key can read across schools (server-only bypass, by design).
+
+**Reproducibility.** `tests/live/02-seed.mjs` seeds two schools with admins and one learner each (FK-safe cleanup; passwords never printed or committed; transient state in a temp file). `tests/live/run-all.mjs` re-runs seed → flow → RLS → guard against the running app (`npm run dev -- -p 3100`). One test bug was found and fixed during verification: the expiry check originally backdated only `expires_at`, which violated the `expires_at > issued_at` constraint and failed silently; it now backdates both columns and asserts the setup succeeds.
+
+**Checks (2026-10-12).** `npm test` (85 unit tests), `npm run typecheck`, `npm run lint`, `npm run format:check` and `npm run build` all pass. `next.config.ts` sets `cacheComponents: true`; route handlers must not export `dynamic = "force-dynamic"` (compile error) and no longer do.
+
+**Notes and limitations.**
+
+- Network to `api.supabase.com` and `*.supabase.co` was intermittently flaky (DNS failures) on 2026-10-12; every live call was retried with backoff and transient failures recovered. Retrying is routine for this environment.
+- The student password policy (min 8 / max 72 characters) remains **interim**; it is enforced in code and unit-tested.
+- Staff invitation email flows (D-018), the staff authentication model, and a non-development environment are outside this slice and remain open for Phase 1 completion (`docs/ROADMAP_AND_TESTING.md` Phase 1).
+- RPO/RTO and learner retention/permanent-deletion policy remain open and are unaffected by this slice.
+- The `AGENTS.md` managed block written by `next dev` was removed and regeneration disabled (`agentRules: false`, Next 16.4).

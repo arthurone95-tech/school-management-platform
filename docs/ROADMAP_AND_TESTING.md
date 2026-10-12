@@ -82,6 +82,8 @@ Exit criteria:
 - Tenant-isolation tests demonstrate that unauthorized cross-school access is denied.
 - No privileged secret is exposed to client code.
 
+**Status 2026-10-12:** the secure-foundation slice is implemented and verified **live** against the non-production dev project `school-management-dev` (Supabase, eu-west-1, Free plan). Migrations `20261011000001` (enrolment foundation: 8 tables, RLS, policies, audit) and `20261011000002` (sign-up guard Auth Hook) are applied and recorded in `supabase_migrations.schema_migrations`. The build, type-check, lint, format and unit-test gates pass (85 tests). Live suites under `tests/live/` — auth mechanics (5), portal flow (22), tenant-isolation/RLS (13) and sign-up guard (4) — all pass against the real project (`node tests/live/run-all.mjs` with the app running and a seeded project). Authentication (portal sign-in with school code + username + password per D-020), RLS enforcement and no privileged client exposure are demonstrated; see `docs/PHASE0_RISK_REGISTER.md` 10.4. Still open for Phase 1 completion: staff-invitation email flows (D-018), the staff authentication model, a non-development environment for the same schema, and the Free-plan migration workflow via the Supabase CLI (currently applied through the Management API).
+
 ### Phase 2: First end-to-end school workflow
 
 Select one workflow from the approved requirements. The exact workflow must be chosen before implementation rather than assumed by the agent.
