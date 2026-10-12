@@ -7,6 +7,15 @@
 //   3. The app is running: `npm run dev -- -p 3100`
 //      (override with LIVE_APP_URL).
 //
+// Steps 06 (session refresh, R-01) and 07 (concurrent refresh, R-02)
+// temporarily shorten the project's jwt_expiry via the Management API and are
+// only run when SUPABASE_MGMT_TOKEN and SUPABASE_MGMT_PROJECT_REF are set in
+// the environment. They restore the original lifetime afterwards.
+//
+// The post-build bundle scan (risk register 7.1) is a separate step because it
+// requires a production build and a running dev server is irrelevant to it:
+//   npm run build && node tests/live/08-no-secrets-in-bundle.mjs
+//
 // Usage: node tests/live/run-all.mjs
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -20,6 +29,17 @@ const steps = [
   "04-rls-isolation.mjs",
   "05-signup-guard.mjs",
 ];
+
+if (
+  !process.env.SUPABASE_MGMT_TOKEN ||
+  !process.env.SUPABASE_MGMT_PROJECT_REF
+) {
+  console.warn(
+    "\nSUPABASE_MGMT_TOKEN / SUPABASE_MGMT_PROJECT_REF not set — skipping\nsession-refresh checks 06 and 07 (they need the Management API to shorten\njwt_expiry temporarily and restore it afterwards).\n",
+  );
+} else {
+  steps.push("06-refresh-session.mjs", "07-concurrent-refresh.mjs");
+}
 
 for (const step of steps) {
   console.log(`\n===== ${step} =====`);

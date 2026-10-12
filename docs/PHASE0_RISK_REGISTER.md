@@ -66,6 +66,8 @@ Severity follows `docs/ROADMAP_AND_TESTING.md` 8.
 
 **Control:** On Next.js 16 the file must be `proxy.ts` at the project root. Confirm the file name and export against the installed Next.js major version before writing auth code, and add an explicit regression test that verifies token refresh occurs.
 
+**Status 2026-10-12:** **verified live** — `tests/live/06-refresh-session.mjs` temporarily shortens the project's `jwt_exp` to 60 s via the Management API, signs in through the portal, waits for the access token to expire, then observes an actual rotation through `proxy.ts` (new `exp`, rotated cookie) against the real project; the original `jwt_exp` is restored afterwards (3/3 PASS, section 10.4).
+
 ### R-02 — Single-use refresh tokens break under duplicate requests — **BLOCKING**
 
 **Severity:** High
@@ -74,6 +76,8 @@ Severity follows `docs/ROADMAP_AND_TESTING.md` 8.
 **Impact:** This directly conflicts with the confirmed low-connectivity requirement (D-008, `docs/PRD.md` 9.2). Users on slow or interrupted connections retry and reload more often, which raises the chance of concurrent requests carrying the same expired cookie. The user-visible result is an apparent random logout — the worst possible failure for adoption in the target market.
 
 **Control:** Perform the refresh in one place per navigation (the proxy). Handle `session: null` from a failed concurrent refresh gracefully and retry or re-authenticate rather than treating it as a sign-out. Test the concurrent-refresh case explicitly.
+
+**Status 2026-10-12:** **verified live** — `tests/live/07-concurrent-refresh.mjs` fires two simultaneous requests with the same expired session cookie; both are served (200/200), both rotate the token (GoTrue's refresh reuse handling absorbs the race), and a follow-up navigation with the rotated cookie refreshes again — no spurious sign-out (4/4 PASS, section 10.4). The failed-refresh path in `src/lib/supabase/session.ts` passes the request through without writing cookies (never clearing the session); in this run both concurrent requests succeeded, so that specific interleaving was not separately observed.
 
 ### R-03 — Server-side authorization must never use `getSession()`
 
@@ -251,7 +255,8 @@ Costs that will arise later and are **not** committed: the production plan, poin
 | Recorded unresolved decisions | Complete (section 5) |
 | Confirmed implementation stack or documented alternative | **Complete** — D-011 confirmed, D-012 and D-015 already confirmed |
 | Initial risk list and test plan | Complete (sections 4 and 7) |
-| Live validation of the secure foundation | **Complete 2026-10-12** — migrations applied to and recorded on `school-management-dev`; auth mechanics (5), portal flow (22), tenant-isolation/RLS (13) and sign-up guard (4) live checks pass (section 10.4) |
+| Live validation of the secure foundation | **Complete 2026-10-12** — migrations applied to and recorded on `school-management-dev`; auth mechanics (5), portal flow (22), tenant-isolation/RLS (15), sign-up guard (4), session refresh R-01 (3) and concurrent refresh R-02 (4) live checks pass (section 10.4) |
+| Phase 0 test-plan closeout | **Complete 2026-10-12** — revoked membership loses access immediately through a live session (7.3); token refresh observed through `proxy.ts` (7.2 / R-01); concurrent refresh without spurious sign-out (7.2 / R-02); no server-only secret in the production build output, verified by scanning `.next/` (7.1). Items that need a UI or features that do not exist yet — sign-out/session-expiry behaviour (7.2), platform administration and cross-school file download (7.3), responsive/accessibility (7.5) and connectivity (7.6) — are tracked for Phase 1 |
 
 Phase 0 exit criteria are met. The two follow-on items recorded in section 5 were resolved or downgraded on 2026-10-11: the documentation baseline was committed as `2bca391`, and the role question no longer blocks Phase 1 because interim defaults were approved (D-019, `docs/ENROLMENT_PERMISSION_MODEL.md` 5.1). Actual school roles remain provisional and must not be hard-coded as validated policy.
 
@@ -343,9 +348,15 @@ The first migration, `supabase/migrations/20261011000001_enrolment_foundation.sq
 
 **Portal flow — `tests/live/03-portal-flow.mjs` 22/22 PASS.** Issuance without a session → 401; a school-A admin issuing for a school-B learner → 403; invalid purpose → 400; unknown activation code → 400; mismatched passwords → 400; activation with a valid code → 200 with a uniform readiness message; single-use enforced (reuse → 400); expiry enforced (a backdated `issued_at`+`expires_at` code is rejected); school-code + username + password sign-in → 200 with a Supabase session cookie; wrong password / wrong school code / unknown username each → 401 with the same uniform message.
 
-**Tenant isolation / RLS — `tests/live/04-rls-isolation.mjs` 13/13 PASS.** An admin sees exactly its own school's learners; requesting another school's rows returns nothing; cross-school insert is `42501` and cross-school update affects 0 rows; `has_school_permission` is true for the caller's school and false for another; audit events are readable and scoped to the caller's school; anon has no grant (`42501`); a student session (valid JWT, not a school member) lists no learners and has no school permission; the service key can read across schools (server-only bypass, by design).
+**Tenant isolation / RLS — `tests/live/04-rls-isolation.mjs` 15/15 PASS.** An admin sees exactly its own school's learners; requesting another school's rows returns nothing; cross-school insert is `42501` and cross-school update affects 0 rows; `has_school_permission` is true for the caller's school and false for another; audit events are readable and scoped to the caller's school; anon has no grant (`42501`); a student session (valid JWT, not a school member) lists no learners and has no school permission; **a member whose membership is `revoked` loses access immediately through an existing live session** (no school permission, no learner rows — the policy evaluates membership per query, so revoking does not wait for token expiry or re-login); the service key can read across schools (server-only bypass, by design).
 
-**Reproducibility.** `tests/live/02-seed.mjs` seeds two schools with admins and one learner each (FK-safe cleanup; passwords never printed or committed; transient state in a temp file). `tests/live/run-all.mjs` re-runs seed → flow → RLS → guard against the running app (`npm run dev -- -p 3100`). One test bug was found and fixed during verification: the expiry check originally backdated only `expires_at`, which violated the `expires_at > issued_at` constraint and failed silently; it now backdates both columns and asserts the setup succeeds.
+**Session refresh (R-01) — `tests/live/06-refresh-session.mjs` 3/3 PASS.** The test shortens the project's `jwt_exp` to 60 s through the Management API, signs in through the portal, waits past the access-token expiry, then makes one request through the proxy and asserts the access token rotated (`exp` increased, rotated cookie) — an **observed** refresh, per the 7.2 wording. `jwt_exp` is restored in a `finally` block and re-read to prove restoration (3600). This confirms `proxy.ts` is invoked on Next.js 16 and that `getClaims()` in `src/lib/supabase/session.ts` refreshes against real GoTrue. Note: this API version names the field `jwt_exp`, not `jwt_expiry`.
+
+**Concurrent refresh (R-02) — `tests/live/07-concurrent-refresh.mjs` 4/4 PASS.** Two simultaneous requests carrying the same expired session cookie: both served 200, both rotated the token (GoTrue's refresh reuse handling absorbs the race), and a follow-up navigation with the rotated cookie refreshed again. No spurious sign-out.
+
+**Bundle secret scan — `tests/live/08-no-secrets-in-bundle.mjs` 1/1 PASS.** After `npm run build`, all 468 files under `.next/` were scanned for the literal `SUPABASE_SECRET_KEY` and `PORTAL_CREDENTIAL_SECRET` values; none appear (secret values are never printed; a leak would be reported as variable + file). This satisfies 7.1's "verify by inspecting the built output, not by assumption".
+
+**Reproducibility.** `tests/live/02-seed.mjs` seeds two schools with admins and one learner each (FK-safe cleanup; passwords never printed or committed; transient state in a temp file). `tests/live/run-all.mjs` re-runs seed → flow → RLS → guard → session refresh → concurrent refresh against the running app (`npm run dev -- -p 3100`); the last two steps require `SUPABASE_MGMT_TOKEN` / `SUPABASE_MGMT_PROJECT_REF` (to shorten and restore `jwt_exp`) and are skipped with a warning when absent. The bundle scan is intentionally separate because it needs a production build (`npm run build && node tests/live/08-no-secrets-in-bundle.mjs`). One test bug was found and fixed during verification: the expiry check originally backdated only `expires_at`, which violated the `expires_at > issued_at` constraint and failed silently; it now backdates both columns and asserts the setup succeeds.
 
 **Checks (2026-10-12).** `npm test` (85 unit tests), `npm run typecheck`, `npm run lint`, `npm run format:check` and `npm run build` all pass. `next.config.ts` sets `cacheComponents: true`; route handlers must not export `dynamic = "force-dynamic"` (compile error) and no longer do.
 
@@ -353,6 +364,7 @@ The first migration, `supabase/migrations/20261011000001_enrolment_foundation.sq
 
 - Network to `api.supabase.com` and `*.supabase.co` was intermittently flaky (DNS failures) on 2026-10-12; every live call was retried with backoff and transient failures recovered. Retrying is routine for this environment.
 - The student password policy (min 8 / max 72 characters) remains **interim**; it is enforced in code and unit-tested.
+- Phase 0 test-plan items that need a UI or features that do not exist yet are deferred to Phase 1, deliberately: sign-out and session-expiry behaviour in the interface (7.2), platform administration and cross-school file download (7.3), responsive/accessibility checks at mobile/tablet/desktop viewports (7.5), and connectivity/retry behaviour for a real workflow (7.6).
 - Staff invitation email flows (D-018), the staff authentication model, and a non-development environment are outside this slice and remain open for Phase 1 completion (`docs/ROADMAP_AND_TESTING.md` Phase 1).
 - RPO/RTO and learner retention/permanent-deletion policy remain open and are unaffected by this slice.
 - The `AGENTS.md` managed block written by `next dev` was removed and regeneration disabled (`agentRules: false`, Next 16.4).

@@ -2,7 +2,8 @@
 //
 // Uses real user JWTs against PostgREST (the same path the browser uses), not
 // SQL role simulation, so the policies, grants and JWT claims are all
-// exercised as they are in production.
+// exercised as they are in production. Includes live checks for a revoked
+// membership losing access immediately (7.3).
 import { createClient } from "@supabase/supabase-js";
 
 import { requiredClientConfig } from "./env.mjs";
@@ -171,6 +172,55 @@ async function main() {
     "student has no school permission",
     `=${studentPerm.data}`,
   );
+
+  // A revoked membership loses access immediately, even with a live session
+  // (risk register 7.3). The policy evaluates membership on every query, so
+  // revoking must not wait for a token expiry or a re-login.
+  const admin = adminClient();
+  let revokedUserId = null;
+  try {
+    const revokedEmail = `revoked.${crypto.randomUUID()}@staff.invalid`;
+    const created = await admin.auth.admin.createUser({
+      email: revokedEmail,
+      password: "RevokedPw123!",
+      email_confirm: true,
+      app_metadata: { provisioned_by: "school-platform" },
+    });
+    if (!created.data.user)
+      throw new Error("could not create revoked-member fixture");
+    revokedUserId = created.data.user.id;
+    await admin.from("school_members").insert({
+      school_id: state.schools.A,
+      user_id: revokedUserId,
+      role: "administrator",
+      status: "revoked",
+    });
+
+    const revokedSession = await signIn(revokedEmail, "RevokedPw123!");
+    const asRevoked = clientFor(revokedSession.token);
+    const revokedPerm = await asRevoked.rpc("has_school_permission", {
+      target_school_id: state.schools.A,
+      required_permission: "learner.read",
+    });
+    report.check(
+      revokedPerm.data === false,
+      "revoked membership grants no school permission (live session)",
+      `=${revokedPerm.data}`,
+    );
+    const revokedLearners = await asRevoked.from("learners").select("id");
+    report.check(
+      revokedLearners.data?.length === 0,
+      "revoked member cannot see school A learners",
+      `rows=${revokedLearners.data?.length} error=${revokedLearners.error?.code ?? "none"}`,
+    );
+  } finally {
+    if (revokedUserId) {
+      // Member row first: school_members.user_id references auth.users with
+      // on delete restrict.
+      await admin.from("school_members").delete().eq("user_id", revokedUserId);
+      await admin.auth.admin.deleteUser(revokedUserId);
+    }
+  }
 
   // The service-only key still bypasses RLS (server path), proving isolation is
   // enforced by policy and not by an accidental global lock.
