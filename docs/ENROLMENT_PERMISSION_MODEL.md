@@ -217,7 +217,7 @@ The mechanism:
 - **Activation and recovery consistency:** activation (8.2) and administrator-assisted recovery (8.3) issue one-time credentials that let the **student** choose a new password through a server route. The server uses the server-only secret key to apply the student-chosen password via the Supabase admin API only after the one-time credential is verified; it never generates, sees, or stores the permanent password itself.
 - **Enumeration and rate limiting:** the resolution path must be rate-limited and must not reveal whether a school code, username or account exists.
 
-This does not block Phase 1. Staff authentication is ordinary email/password and is unaffected, and the student portal is not part of the first implementation slice.
+This does not block Phase 1. Staff authentication is ordinary email/password and is unaffected (confirmed as D-024, 2026-10-12), and the student portal is not part of the first implementation slice.
 
 ## 9. Essential Unresolved Decisions
 

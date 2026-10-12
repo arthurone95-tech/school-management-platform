@@ -46,9 +46,9 @@ beforeAll(async () => {
       ('${ADMIN_A}'), ('${STAFF_A}'), ('${ADMIN_B}'), ('${OUTSIDER}');
 
     insert into public.school_members (school_id, user_id, role, status) values
-      ('${SCHOOL_A}', '${ADMIN_A}', 'administrator', 'active'),
-      ('${SCHOOL_A}', '${STAFF_A}', 'staff', 'active'),
-      ('${SCHOOL_B}', '${ADMIN_B}', 'administrator', 'active');
+      ('${SCHOOL_A}', '${ADMIN_A}', 'school_administrator', 'active'),
+      ('${SCHOOL_A}', '${STAFF_A}', 'teacher', 'active'),
+      ('${SCHOOL_B}', '${ADMIN_B}', 'school_administrator', 'active');
 
     insert into public.classes (id, school_id, name) values
       ('${CLASS_A1}', '${SCHOOL_A}', 'Primary 1'),
@@ -126,14 +126,12 @@ describe("school isolation (read)", () => {
     );
   });
 
-  it("shows a staff member only their own school's learners", async () => {
+  it("shows a teacher nothing: the teacher role has no permissions by default (D-021)", async () => {
     await actAsUser(db, STAFF_A);
     const result = await db.query<{ id: string }>(
       `select id from public.learners`,
     );
-    expect(result.rows.map((row) => row.id).sort()).toEqual(
-      [LEARNER_A, LEARNER_C].sort(),
-    );
+    expect(result.rows).toHaveLength(0);
   });
 
   it("shows nothing to an authenticated user with no membership", async () => {
@@ -151,10 +149,10 @@ describe("school isolation (read)", () => {
 });
 
 describe("global permission catalogue", () => {
-  it("grants the administrator the full enrolment permission set", async () => {
+  it("grants the school administrator the full enrolment permission set", async () => {
     await actAsUser(db, ADMIN_A);
     const result = await db.query<{ permission: string }>(
-      `select permission from public.role_permissions where role = 'administrator'`,
+      `select permission from public.role_permissions where role = 'school_administrator'`,
     );
     const permissions = result.rows.map((row) => row.permission);
     expect(permissions).toEqual(
@@ -170,17 +168,12 @@ describe("global permission catalogue", () => {
     );
   });
 
-  it("gives staff create and view only, never membership or audit rights", async () => {
+  it("gives the teacher no permission rows by default: D-021 fails closed", async () => {
     await actAsUser(db, STAFF_A);
     const result = await db.query<{ permission: string }>(
-      `select permission from public.role_permissions where role = 'staff'`,
+      `select permission from public.role_permissions where role = 'teacher'`,
     );
-    const permissions = result.rows.map((row) => row.permission).sort();
-    expect(permissions).toEqual([
-      "class.read",
-      "learner.create",
-      "learner.read",
-    ]);
+    expect(result.rows).toHaveLength(0);
   });
 });
 
@@ -200,12 +193,12 @@ describe("school isolation (write)", () => {
     ).rejects.toThrow(/row-level security/i);
   });
 
-  it("refuses a staff member inserting a school membership", async () => {
+  it("refuses a teacher inserting a school membership", async () => {
     await actAsUser(db, STAFF_A);
     await expect(
       db.query(
         `insert into public.school_members (school_id, user_id, role, status)
-         values ('${SCHOOL_A}', '${OUTSIDER}', 'staff', 'active')`,
+         values ('${SCHOOL_A}', '${OUTSIDER}', 'teacher', 'active')`,
       ),
     ).rejects.toThrow(/row-level security/i);
   });
@@ -214,7 +207,7 @@ describe("school isolation (write)", () => {
     await actAsUser(db, ADMIN_A);
     await db.query(
       `insert into public.school_members (school_id, user_id, role, status)
-       values ('${SCHOOL_A}', '${OUTSIDER}', 'staff', 'active')`,
+       values ('${SCHOOL_A}', '${OUTSIDER}', 'school_administrator', 'active')`,
     );
     await actAsSystem(db);
     await db.query(
@@ -328,7 +321,7 @@ describe("audit trail", () => {
     expect(JSON.stringify(updateEvent?.details)).not.toContain("Akosua");
   });
 
-  it("hides audit history from staff, who lack the audit permission", async () => {
+  it("hides audit history from a teacher, who has no permissions by default", async () => {
     await actAsUser(db, STAFF_A);
     const events = await db.query(`select id from public.audit_events`);
     expect(events.rows).toHaveLength(0);
@@ -388,6 +381,26 @@ describe("membership status", () => {
     await actAsUser(db, STAFF_A);
     const learners = await db.query(`select id from public.learners`);
     expect(learners.rows).toHaveLength(0);
+
+    await actAsSystem(db);
+    await db.query(
+      `update public.school_members set status = 'active'
+        where user_id = '${STAFF_A}'`,
+    );
+  });
+
+  it("grants an invited membership nothing until it is activated", async () => {
+    await actAsSystem(db);
+    await db.query(
+      `update public.school_members set status = 'invited'
+        where user_id = '${STAFF_A}'`,
+    );
+
+    await actAsUser(db, STAFF_A);
+    const learners = await db.query(`select id from public.learners`);
+    const schools = await db.query(`select id from public.schools`);
+    expect(learners.rows).toHaveLength(0);
+    expect(schools.rows).toHaveLength(0);
 
     await actAsSystem(db);
     await db.query(

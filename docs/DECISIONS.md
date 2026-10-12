@@ -292,6 +292,22 @@ Evaluate costs, credentials, reliability, security, and alternatives before intr
 - **Dependencies:** Legal validation (Ghana) and school obligations before onboarding; a documented retention schedule remains to be produced; audit-log retention follows the same framework.
 - **Approval:** Project owner, 2026-10-12.
 
+### D-024: Staff authentication and invitation approach
+
+- **Status:** Confirmed
+- **Date:** 2026-10-12
+- **Context:** Phase 1 requires staff authentication to work in the intended environment. D-018 requires enrolment roles (staff) to be invited rather than self-registered, D-021 set the staff roles (School Administrator, Teacher), and `docs/ENROLMENT_PERMISSION_MODEL.md` 8.4 already states staff authentication is ordinary email/password, unaffected by the student portal model. The open part was the concrete invitation mechanics and how an invited member becomes active.
+- **Decision:** Implement staff authentication and invitation as follows:
+  - **Authentication.** Staff sign in with **email + password** directly against Supabase Auth (no school code, no internal identifier), mirroring D-020's separation of identity from authorization. The school is resolved from the caller's membership after Auth verifies the password — never from the request.
+  - **Invitation.** An authorized School Administrator (`member.manage` in their own school) invites by email. The server first creates the auth account via the admin API with `email_confirm: false` and the `provisioned_by = 'school-platform'` marker (the same marker the sign-up guard hook requires — `docs/DATABASE_DOCUMENTATION.md` 5 and the 0002 migration), then calls Supabase's built-in invitation endpoint on that existing user so GoTrue issues the **single-use, expiring invite email**. Two steps are required because GoTrue's invite endpoint ignores `app_metadata` (so a directly invited user would fail the guard hook); the two-step form keeps the guard's rule that only the platform server can create accounts, with the marker in the spoof-proof `app_metadata` location. The membership row is created with status `invited` through the caller's authenticated session, so RLS re-checks the permission and the audit trigger records the actor.
+  - **Acceptance.** The invited user follows the email link to `/auth/confirm` (token exchange, not a parallel code channel), chooses a password at `/join` (min 8 / max 72 characters, interim policy), and the first **confirmed** sign-in with that password activates the membership (`invited` → `active`) and writes an actor-attributed audit event. Supabase refuses password sign-in for unconfirmed emails, so activation cannot occur before the email link is used.
+  - **Denials.** Sign-in fails closed with uniform messages for: no staff membership, revoked/suspended membership, and an anomalous multi-school membership; it never falls through to a partial session.
+- **Reasoning:** Uses Supabase's maintained invitation flow (single-use, expiring token) rather than inventing a parallel channel; keeps the audit trail attributed; keeps the school boundary on the server (an invite is always aimed at the caller's own school); satisfies D-018 (staff are invited, never self-registered).
+- **Alternatives:** *Administrator-chosen passwords* — rejected (never generate or see staff passwords; consistent with the student model). *Self-registration* — rejected by D-018. *Accepting the marker in `user_metadata` so a one-step invite works* — rejected: `user_metadata` is client-settable on sign-up paths, which would let a future sign-up spoof the marker and weaken the guard.
+- **Consequences:** The interim password policy (8–72) applies to staff as well as students and remains interim. The actual email delivery/click path is verified manually (the Free-plan shared pooler validates recipient DNS at send time and rejects `@example.com`, and is rate-limited to 2 sends/hour — dev caveats, see `docs/PHASE0_RISK_REGISTER.md` 10.4); the server-side flow, activation, audit, and denials are covered by `tests/live/09-staff-auth.mjs`. Role labels `school_administrator` and `teacher` apply via migration `20261012000003`. The staff sign-in UI is part of the Phase 2 staff-facing slice; the API routes and `/join` acceptance page are the Phase 1 foundation.
+- **Dependencies:** Auth email configuration (redirect allow-list) for the invite link; the Supabase CLI path (which needs the database password) for future migrations.
+- **Approval:** Project owner, 2026-10-12.
+
 ## 5. Decisions Required Before Relevant Features
 
 These questions do not all need to be answered immediately. Resolve each one before it materially affects implementation.
@@ -314,7 +330,7 @@ These questions do not all need to be answered immediately. Resolve each one bef
 
 - Which roles exist at school level? **Resolved 2026-10-12** — D-021: School Administrator, Teacher and Student at school level; Platform Owner is platform-level (cross-school). The permission catalogue content per feature remains to be decided.
 - Which platform-level administrative capabilities are required? **Partially resolved 2026-10-12** — D-021: Platform Owner is a narrow, enumerated capability set that never grants unrestricted access to student or school records, and every Platform Owner access is explicitly authorized and audited. The concrete capability list is defined with the features that need it.
-- What is the approved process for inviting, suspending, and removing users?
+- What is the approved process for inviting, suspending, and removing users? **Partially resolved 2026-10-12** — D-024: staff invitations are approved (an authorized school administrator invites by email; the invited membership activates on first sign-in). Suspension/removal workflows remain to be defined.
 - ~~What is the approved approach for student portal authentication?~~ **Resolved** — D-020 (Confirmed): server-mediated school-code + username sign-in over an internal, non-deliverable account identifier, with Supabase Auth verifying the password. See `docs/ENROLMENT_PERMISSION_MODEL.md` 8.4.
 - Membership in more than one school is excluded from the first release by D-017. The conditions under which it may be introduced remain open.
 

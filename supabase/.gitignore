@@ -1,0 +1,4 @@
+# Local Supabase CLI state (linked project ref, temporary files, local
+# credentials). Never commit anything from here.
+.temp/
+.env

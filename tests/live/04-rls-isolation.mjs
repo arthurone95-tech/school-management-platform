@@ -192,7 +192,7 @@ async function main() {
     await admin.from("school_members").insert({
       school_id: state.schools.A,
       user_id: revokedUserId,
-      role: "administrator",
+      role: "school_administrator",
       status: "revoked",
     });
 

@@ -135,7 +135,7 @@ async function main() {
     const { error: memberError } = await admin.from("school_members").insert({
       school_id: created.id,
       user_id: adminUserId,
-      role: "administrator",
+      role: "school_administrator",
       status: "active",
     });
     if (memberError) throw memberError;

@@ -1,5 +1,6 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
 import { PGlite } from "@electric-sql/pglite";
 
@@ -21,6 +22,9 @@ const SUPABASE_STUB = `
   create role anon nologin;
   create role authenticated nologin;
   create role service_role nologin bypassrls;
+  -- Supabase's GoTrue runs the Auth Hook as this role (migration 0002 grants
+  -- execution to it).
+  create role supabase_auth_admin nologin;
 
   create schema auth;
   create table auth.users (id uuid primary key);
@@ -32,22 +36,25 @@ const SUPABASE_STUB = `
     $$;
 `;
 
-const MIGRATION_FILE = fileURLToPath(
-  new URL(
-    "../../supabase/migrations/20261011000001_enrolment_foundation.sql",
-    import.meta.url,
-  ),
+const MIGRATIONS_DIR = fileURLToPath(
+  new URL("../../supabase/migrations/", import.meta.url),
 );
 
 /**
- * Creates a fresh in-memory database with the Supabase stub and the enrolment
- * migration applied. Runs as the superuser; use {@link actAs} to switch to a
- * client role before asserting policy behaviour.
+ * Creates a fresh in-memory database with the Supabase stub and every approved
+ * migration applied in filename order (the same order Supabase applies them).
+ * Runs as the superuser; use {@link actAs} to switch to a client role before
+ * asserting policy behaviour.
  */
 export async function createTestDatabase(): Promise<PGlite> {
   const db = new PGlite();
   await db.exec(SUPABASE_STUB);
-  await db.exec(readFileSync(MIGRATION_FILE, "utf8"));
+  const files = readdirSync(MIGRATIONS_DIR)
+    .filter((name) => name.endsWith(".sql"))
+    .sort();
+  for (const name of files) {
+    await db.exec(readFileSync(join(MIGRATIONS_DIR, name), "utf8"));
+  }
   return db;
 }
 

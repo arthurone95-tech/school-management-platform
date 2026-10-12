@@ -1,0 +1,55 @@
+# Supabase CLI configuration.
+#
+# This file is the standard `supabase init` output with the local project id
+# set and defaults reflecting this repo's choices:
+#   - Auth public sign-up is disabled (matching the remote dev project and the
+#     sign-up guard in migrations/20261011000002_portal_signup_guard.sql).
+#   - The URL/redirect values here apply to a local `supabase start` stack,
+#     which is NOT part of this repo's migration workflow (no Docker); they are
+#     kept only because the CLI expects the keys. The remote project's Site URL
+#     and redirect allow-list are configured in the Supabase dashboard.
+#
+# Migration workflow:
+#   npx supabase login                 # uses a scoped access token
+#   npx supabase link --project-ref ysjumhlyqhoobywgqand   # prompts for the
+#                                       # project database password
+#   npx supabase db push               # applies only missing migrations; the
+#                                       # migrations already applied via the
+#                                       # Management API and recorded in
+#                                       # supabase_migrations.schema_migrations
+#                                       # are skipped, not re-run
+#
+# Until the database password is available, new migrations are applied with the
+# committed helper `node tests/live/apply-migration.mjs` against the dev
+# project (see supabase/README.md). Keep this repo's config under version
+# control; never commit `supabase/.temp/` (linked project state) or any
+# credentials.
+
+project_id = "school-management-platform"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 15
+
+[studio]
+enabled = false
+
+[inbucket]
+enabled = false
+
+[storage]
+enabled = false
+
+[auth]
+enabled = true
+site_url = "http://localhost:3100"
+additional_redirect_urls = ["http://localhost:3100/**"]
+jwt_expiry = 3600
+enable_signup = false

@@ -64,6 +64,7 @@ Used for implementation and local verification.
 - Keep credentials outside source control.
 - Apply migrations and validate changes before promotion.
 - Avoid using real learner records for routine development.
+- **Current state (2026-10-12):** development runs on one shared non-production Supabase project (`school-management-dev`, Free plan — D-013/D-015) with environment-specific configuration: local secrets live in `.env.local` (never committed; names and placeholders only in `.env.example`), and server-only secrets (`SUPABASE_SECRET_KEY`, `PORTAL_CREDENTIAL_SECRET`) are excluded from client bundles. A separate secondary non-production environment for the same schema remains a Phase 1 open item (`docs/ROADMAP_AND_TESTING.md` Phase 1), and the Free plan is not a production configuration.
 
 ### 4.2 Testing or staging
 

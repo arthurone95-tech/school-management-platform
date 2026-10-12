@@ -276,6 +276,53 @@ Document actual implemented behavior. Do not describe planned endpoints as opera
 - **Database tables:** `schools`, `learners`, `learner_portal_accounts` (read); Auth sign-in.
 - **Tests:** `tests/live/03-portal-flow.mjs` (success sets a session cookie; each wrong credential variant → uniform 401), unit tests for `parseSignInInput`.
 
+### 14.4 `POST /api/staff/sign-in` — staff sign-in (implemented 2026-10-12)
+
+- **Purpose:** email + password authentication for staff (D-021, D-024). The server verifies the password with Supabase Auth, then resolves the school membership and role; the school is **never** taken from the request.
+- **Authentication:** none (public endpoint); protected by password verification, uniform failures and rate limiting. On success the Supabase session cookies are set via `@supabase/ssr`.
+- **Request schema:** `{ "email": string, "password": string }`.
+- **Response schema (200):** `{ "ok": true, "role": "school_administrator" | "teacher" }`.
+- **Validation rules:** email/password required; password length ≤ 72. Malformed input → `400`.
+- **Error behaviour (uniform, no account enumeration):** wrong password or unknown email → `401` with one shared message; a valid account with no staff membership → `403` `not a school staff member`; a `revoked`/suspended membership → `403` `school access is not active`; multi-school membership (anomalous under D-017) fails closed to `500`; rate limit → `429`.
+- **First-sign-in activation:** an `invited` membership flips to `active` on the first **confirmed** sign-in (`activation` requires the invitation email link, because Supabase refuses password sign-in for unconfirmed emails) and writes a `staff_membership_activated` audit event attributed to the user.
+- **Rate limits:** sliding window keyed by client address + email (identity-hashed, never logged).
+- **Database tables:** `school_members` (read/update), `audit_events` (insert); Auth sign-in.
+- **Tests:** `tests/live/09-staff-auth.mjs`, unit tests for `parseStaffSignInInput` and `classifySignIn`.
+
+### 14.5 `POST /api/staff/sign-out` — staff sign-out (implemented 2026-10-12)
+
+- **Purpose:** clears the Supabase session cookies via the server client. Never touches membership rows; access decisions are always made per request by RLS and server-side checks.
+- **Response schema (200):** `{ "ok": true }`.
+
+### 14.6 `GET /api/staff/me` — current staff identity and school context (implemented 2026-10-12)
+
+- **Purpose:** returns the caller's active school membership and role. The school comes from the signed-in session's membership row, never from the request.
+- **Authentication:** Supabase session required (`auth.getUser()`, never an unverified cookie). No session → `401`.
+- **Response schema (200):** `{ "ok": true, "userId": string, "role": string, "schoolId": string }`.
+- **Denials:** an invited or revoked membership is invisible to RLS and is not staff → `403` (same message for a non-staff account); multiple active memberships → `403` (fail closed).
+- **Database tables:** `school_members` (read, RLS-scoped).
+- **Tests:** `tests/live/09-staff-auth.mjs`.
+
+### 14.7 `POST /api/staff/invite` — invite a staff member by email (implemented 2026-10-12)
+
+- **Purpose:** an authorized school administrator invites a staff member (D-018, D-024). The invite is scoped to the **caller's own school** — no school identifier is accepted from the request, so an invite can never be aimed at another school.
+- **Authentication:** Supabase session required. No session → `401`.
+- **Required permission:** `member.manage` in the caller's own school, checked via `has_school_permission` RPC. No active/unique membership or missing permission → `403`.
+- **Request schema:** `{ "email": string, "role": "school_administrator" | "teacher", "schoolId"?: string }` — `schoolId` is ignored entirely if supplied.
+- **Response schema (201):** `{ "ok": true, "role": string }`. Duplicate email (already an Auth account or already a member of the school) → `409`; a non-staff role → `400`.
+- **Side effects:** creates the auth user **unconfirmed** with the `provisioned_by = 'school-platform'` marker (two-step: `createUser`, then the built-in single-use invite email on the existing user — GoTrue's invite endpoint ignores `app_metadata`, so a one-step invite would fail the sign-up guard hook; D-024). Inserts the `school_members` row with status `invited` through the caller's authenticated session so RLS re-checks the permission and the audit trigger records the actor.
+- **Database tables:** Auth `users`, `school_members` (insert), `audit_events` (insert, via trigger).
+- **Tests:** `tests/live/09-staff-auth.mjs` (401/400/403/201/409 paths, ignored `schoolId`).
+
+### 14.8 `POST /api/staff/set-password` — set password during invitation acceptance (implemented 2026-10-12)
+
+- **Purpose:** applies the password chosen by the invited staff member at `/join`, reached after the invitation email's single-use link was exchanged at `/auth/confirm` (which confirms the email and establishes a session). Supabase hashes and stores the password; the platform never sees or stores it. The temporary session is then ended; the user signs in normally, which activates the membership.
+- **Authentication:** Supabase session required (only the session-holding invited user may set their password). No session → `401`.
+- **Request schema:** `{ "password": string }` (min 8 / max 72 characters, interim policy).
+- **Response schema (200):** `{ "ok": true }`. Weak/incorrect input → `400`.
+- **Database tables:** Auth `users` (password update).
+- **Tests:** `tests/live/09-staff-auth.mjs` (401/anonymous, 200 + session end, old password → 401, new password → 200).
+
 ## 15. Implementation Gate
 
 Implement only the operations required for the selected end-to-end workflow.

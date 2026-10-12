@@ -175,6 +175,7 @@ As of 2026-10-12 the migrations are also applied to and verified **live** agains
 
 - `20261011000001_enrolment_foundation.sql` — the enrolment slice described in this document: `schools`, `classes`, `learners`, `school_members`, `learner_class_placements`, `learner_portal_accounts`, `learner_portal_credentials`, `role_permissions`, `audit_events`, with RLS, policies, the audit trigger and the portal-credential store.
 - `20261011000002_portal_signup_guard.sql` — a `public.before_user_created(jsonb)` Auth Hook that allows account creation only when the platform server has stamped `app_metadata.provisioned_by = 'school-platform'`, plus the enabling project settings (`disable_signup = true`, hook URI `pg-functions://postgres/public/before_user_created`). The hook is invoked by GoTrue on the sign-up path; the service-role admin API is protected by the server-only secret key.
+- `20261012000003_staff_auth_roles.sql` — aligns role labels with D-021: renames role `administrator` → `school_administrator` in `role_permissions` and `school_members` (permissions preserved) and removes the interim `staff` role (its member rows become `teacher`, which has no permissions by default — fails closed). On this dev project the two seeded admin memberships become `school_administrator` (10 permissions); no `teacher` memberships exist yet.
 
 Full live verification results: `docs/PHASE0_RISK_REGISTER.md` 10.4.
 

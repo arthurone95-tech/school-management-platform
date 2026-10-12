@@ -12,6 +12,9 @@
 // only run when SUPABASE_MGMT_TOKEN and SUPABASE_MGMT_PROJECT_REF are set in
 // the environment. They restore the original lifetime afterwards.
 //
+// Step 09 (staff auth) requires migrations 0001-0003 applied to the project
+// (0003 aligns the role labels with D-021).
+//
 // The post-build bundle scan (risk register 7.1) is a separate step because it
 // requires a production build and a running dev server is irrelevant to it:
 //   npm run build && node tests/live/08-no-secrets-in-bundle.mjs
@@ -28,6 +31,7 @@ const steps = [
   "03-portal-flow.mjs",
   "04-rls-isolation.mjs",
   "05-signup-guard.mjs",
+  "09-staff-auth.mjs",
 ];
 
 if (
