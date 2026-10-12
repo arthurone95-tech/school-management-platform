@@ -136,7 +136,7 @@ Define expected behavior for duplicate attendance submissions, repeated payment 
 
 For financial records, use appropriate exact numeric types rather than floating-point arithmetic for currency amounts. Define currency explicitly where relevant.
 
-Do not assume that a record can be safely deleted merely because the user interface offers a delete button. Apply the approved retention, audit, and relationship rules.
+Do not assume that a record can be safely deleted merely because the user interface offers a delete button. Apply the approved retention, audit, and relationship rules (interim retention framework: D-023).
 
 ## 7. Indexing and Query Performance
 
@@ -234,7 +234,7 @@ Do not treat the existence of a backup setting as proof that recovery works.
 
 Confirm whether point-in-time recovery is available and affordable on the selected plan. If unavailable, document the limitation and approved mitigation.
 
-Recovery Point Objective (RPO) and Recovery Time Objective (RTO) are **not yet agreed**. They remain open for production-readiness review and must not be assumed, committed to, or represented as met until agreed and verified by a restoration test.
+Recovery Point Objective (RPO) and Recovery Time Objective (RTO) have **proposed initial production targets** (D-022: RPO 24 hours, RTO 24 hours). They are targets, not verified guarantees: they remain open for production-readiness review and must not be assumed, committed to, or represented as met until verified by a restoration test.
 
 ## 12. Testing Requirements
 

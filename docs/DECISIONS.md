@@ -2,7 +2,7 @@
 
 **Project:** School Management Platform\
 **Document status:** Living decision record\
-**Version:** 1.3
+**Version:** 1.4
 
 ## 1. Purpose
 
@@ -127,11 +127,18 @@ See D-015 for the evaluated alternatives, the trade-offs accepted, and the condi
 
 ### D-013: Hosting
 
-**Status:** Open
-
-Select an appropriate hosting provider after checking compatibility with the chosen framework, deployment requirements, cost, reliability, and operational capabilities.
-
-Do not assume a particular provider has been selected.
+- **Status:** Confirmed for development; **Proposed** for production.
+- **Date:** 2026-10-12 (development arrangement effective 2026-10-12; the underlying dev project was recorded in `docs/PHASE0_RISK_REGISTER.md` 5)
+- **Context:** "Hosting" was previously recorded as Open with no provider assumed (see `docs/DATABASE_DOCUMENTATION.md` 11 for the backup/recovery part of the same question). Two distinct questions were being conflated: where the **application** runs, and which backend services it uses. The backend is settled (D-015), and the application runs as one shared deployment (D-003), so what remained open is the application-hosting arrangement — and it differs between development and production.
+- **Decision:**
+  - **Development:** continue using the existing local Next.js setup and the existing Supabase non-production project `school-management-dev` (Free plan). No hosting change is required or authorised for development.
+  - **Production (proposed):** **Vercel** is recorded as the proposed application-hosting option, subject to compatibility and cost validation. It is a **Proposed** option, not a confirmed provider; a different provider may be selected after validation.
+  - **Production (bounded):** production must use a **separately configured environment** from development, with backup, security, privacy and cost requirements verified before deployment. The Supabase production plan and its actual limits must be reviewed and approved before any real school is onboarded (`docs/PRD.md` 12).
+- **Reasoning:** The application is Next.js on Node hosted as one shared deployment, and the backend remains managed Supabase. Vercel is the framework's own first-class Next.js hosting, which keeps the deployment surface minimal for a solo operator. It remains a proposal because cost, compatibility with the specific Next.js features used, and data-residency considerations are not yet verified and must not be assumed.
+- **Alternatives:** *Keeping development hosting as production hosting* — rejected; a dev Free-plan environment must not be used to onboard a real school (`docs/PRD.md` 12). *Self-hosted Node in production* — viable but adds operating burden and was not chosen as the initial proposal. Any provider remains open subject to the same validation.
+- **Consequences:** No deployment, upgrade, or paid-service activation is performed. Until validation completes, the production hosting plan remains a production-readiness item; development stays zero-cost on the Free plan (D-015). Vercel compatibility and cost validation, plus backup/security/privacy verification of the production environment, are explicit production-readiness gates.
+- **Dependencies:** Compatibility and cost validation of the proposed provider; production plan and actual-limit review; the production readiness checks in `docs/DEPLOYMENT_AND_OPERATIONS.md` 3 and `docs/PRD.md` 12.
+- **Approval:** Project owner, 2026-10-12.
 
 ### D-014: Background jobs and integrations
 
@@ -149,8 +156,8 @@ Evaluate costs, credentials, reliability, security, and alternatives before intr
 - **Decision:** Supabase is the selected backend direction. Development starts on the Supabase Free plan. The Free plan is **not** approved as a production configuration; the production plan and actual provider limits must be reviewed and approved before any real school is onboarded.
 - **Reasoning:** Three requirements are non-negotiable under the existing documentation and are what decided the outcome. `docs/DATABASE_DOCUMENTATION.md` 4.2 requires database-level enforcement of tenant-consistent relationships, and states that application-level checks alone are insufficient. Section 5.1 requires PostgreSQL Row Level Security on all exposed tenant tables. Section 6 requires exact numeric types rather than floating-point arithmetic for currency. Supabase satisfies all three without amending any existing document, and additionally supplies authentication, multi-factor authentication, private storage with RLS, auth audit logs and backups as one managed unit. This matters because `docs/DEPLOYMENT_AND_OPERATIONS.md` 2 requires a deployment model a solo developer can operate reliably.
 - **Alternatives:** *Firebase* was rejected. Cloud Firestore offers no PostgreSQL, therefore no RLS and no composite foreign keys, and its only numeric types are 64-bit IEEE 754 floating point and 64-bit signed integer, with no exact decimal type. Using it would require weakening `docs/DATABASE_DOCUMENTATION.md` 4.2 and 6. Firestore does have the strongest built-in offline persistence of the three options, which remains worth reconsidering only if offline capability is ever formally approved as a dominant requirement under D-008. *Neon* was rejected for the initial phase. It is genuine PostgreSQL with RLS, composite foreign keys and exact numerics, and is cheaper on compute alone, but it supplies no private object storage, its managed authentication currently lacks multi-factor support and has only partial organization support, and it requires separately sourcing storage, authentication and email delivery. For a single-developer operation those unbudgeted components outweigh the compute saving. Neon remains a viable dedicated-infrastructure option under D-006.
-- **Consequences:** The project accepts that provider capability is verified only for the specific features used, and must be re-verified before production use. The service-role credential that bypasses RLS remains the single highest operational risk and continues to be governed by `docs/DATABASE_DOCUMENTATION.md` 5.2 and `docs/SYSTEM_ARCHITECTURE.md` 5; that risk is inherent to any privileged database credential and is not removed by choosing a different provider. Cost is not yet bounded: point-in-time recovery is an additional paid add-on, and no recovery objectives have been agreed. Migration away from Supabase remains feasible because the database is PostgreSQL and exports are portable.
-- **Dependencies:** Before production, confirm the production plan and its actual limits, agree recovery objectives, verify backup restoration in a non-production environment, and confirm data residency and processor terms against applicable Ghanaian requirements. See `docs/SECURITY_AND_PRIVACY.md` 5.
+- **Consequences:** The project accepts that provider capability is verified only for the specific features used, and must be re-verified before production use. The service-role credential that bypasses RLS remains the single highest operational risk and continues to be governed by `docs/DATABASE_DOCUMENTATION.md` 5.2 and `docs/SYSTEM_ARCHITECTURE.md` 5; that risk is inherent to any privileged database credential and is not removed by choosing a different provider. Cost is not yet bounded: point-in-time recovery is an additional paid add-on, and recovery objectives are recorded only as proposed targets pending verification (D-022). Migration away from Supabase remains feasible because the database is PostgreSQL and exports are portable.
+- **Dependencies:** Before production, confirm the production plan and its actual limits, verify the proposed RPO/RTO targets (D-022) through backup capability and a restoration test in a non-production environment, verify the associated costs, and confirm data residency and processor terms against applicable Ghanaian requirements. See `docs/SECURITY_AND_PRIVACY.md` 5.
 - **Approval:** Project owner.
 
 ### D-016: Accessibility target
@@ -205,7 +212,7 @@ Evaluate costs, credentials, reliability, security, and alternatives before intr
   - Administrators never see or choose a student's password. Recovery is student-initiated where a verified method exists, otherwise administrator-assisted, and is audited.
 - **Reasoning:** The owner's requirement is to register students without requiring them to own email addresses. This is realistic for community schools and reduces the personal data collected about children. Separating the internal ID from the administrative registration number keeps the database key stable and opaque while giving schools a readable reference. Separating portal access from enrolment lets a school record a student immediately and defer the account decision. Administrator-led activation matches the finding that administrators create accounts and avoids building an unvalidated self-service flow.
 - **Alternatives:** *Collecting all ten reference-system fields including email by default* was rejected as contrary to data minimisation and unnecessary for enrolment. *Free-text class names* were already rejected in the enrolment model on data-integrity grounds. *Student self-registration* was rejected: it would allow unverified records and does not match observed practice. *A single identifier used for both database linkage and school administration* was rejected because the two have different uniqueness scopes and different exposure. *Global uniqueness for the school registration number* was rejected because schools assign their own numbers independently and collisions across schools are expected and harmless.
-- **Consequences:** The enrolment schema carries required columns for the fields above, a composite unique constraint on `(school_id, registration_number)`, and a username unique within the school (see D-020). Portal access state is modelled separately from enrolment status. The first implementation slice still excludes portal screens; only the model is fixed. Permanent deletion remains subject to an approved retention policy before production (`docs/ENROLMENT_PERMISSION_MODEL.md` 5.2).
+- **Consequences:** The enrolment schema carries required columns for the fields above, a composite unique constraint on `(school_id, registration_number)`, and a username unique within the school (see D-020). Portal access state is modelled separately from enrolment status. The first implementation slice still excludes portal screens; only the model is fixed. Permanent deletion remains subject to an approved retention policy before production; the interim framework in D-023 applies until then (`docs/ENROLMENT_PERMISSION_MODEL.md` 5.2).
 - **Dependencies:** The student portal authentication approach, which Supabase Auth cannot satisfy natively — resolved by D-020. The class and placement model in `docs/ENROLMENT_PERMISSION_MODEL.md` 5.3 and E1.
 - **Approval:** Project owner.
 
@@ -237,6 +244,54 @@ Evaluate costs, credentials, reliability, security, and alternatives before intr
 - **Dependencies:** A Supabase project to prove the flow (`signInWithPassword` against a server-created account, session cookies via `@supabase/ssr`, email flows disabled, reserved namespace accepted by the email validator, and a `Before User Created` hook that only permits the trusted server path). The owner approved the identifier trade-off on 2026-10-11.
 - **Approval:** Project owner, 2026-10-11.
 
+### D-021: Initial platform roles and their boundaries
+
+- **Status:** Confirmed
+- **Date:** 2026-10-12
+- **Context:** "Which school roles are required initially" and "final school role set" (E5) were open in `docs/PHASE0_RISK_REGISTER.md` 5 and `docs/ENROLMENT_PERMISSION_MODEL.md` 9, with an interim default of *school administrator + school staff* in `docs/ENROLMENT_PERMISSION_MODEL.md` 5.1. Enrolment authorization (D-018) and every staff-facing feature depend on knowing which roles exist and what their boundaries are. D-019 already set the student account model, so the student role's existence was never genuinely in question; the open part was the full initial set and each role's scope.
+- **Decision:** The initial role set is exactly four roles: **Platform Owner, School Administrator, Teacher, and Student**. Parent/Guardian access is **deferred** and is not part of the initial set. Roles remain **labels**; each role's authority comes from the permission catalogue stored as data (`role_permissions`), never from hard-coded role names. Initial scope and school boundary per role:
+  - **Platform Owner** — platform-level, **cross-school** administrative capability, not bound to one school. Capabilities are a narrow, enumerated set (for example creating and configuring schools and platform settings). Platform Owner access to student or school records is **not** unrestricted: any such access requires explicit, scoped authorization for the specific operation and is **audited**; the role label alone never bypasses school isolation or RLS.
+  - **School Administrator** — **exactly one school** (its `school_members` row). Manages that school's own members, enrolment records, class configuration, portal activation/recovery, and settings. No cross-school capability.
+  - **Teacher** — **exactly one school**. School-scoped teaching role. By default the teacher is assigned **no** permissions; each approved feature seeds its own teacher permission through the catalogue (for example, view of own-class rosters).
+  - **Student** — **exactly one school** (the account's school, D-017). Access only to the student's **own** records (own profile, own portal data, own report cards when implemented). A student session never has staff-level permissions.
+- **Reasoning:** These four roles match how the first workflows are actually performed — schools administer, teachers teach, students access their own records — while keeping the Platform Owner narrow, explicitly authorized, and audited, and deferring a parent account until a validated requirement (and a verified contact/verification method) exists. Storing permissions as data keeps later role additions a configuration change, consistent with the reference finding that no universal staff-role structure exists (D-019).
+- **Alternatives:** *Keeping the two-role interim (school administrator + school staff) as final* — rejected by the owner; Teacher and Student are already required by the approved workflows. *Adding headteacher, registrar or parent/guardian now* — rejected: their responsibilities are unvalidated and Parent/Guardian access is explicitly deferred.
+- **Consequences:** The interim *school administrator + school staff* default in `docs/ENROLMENT_PERMISSION_MODEL.md` 5.1 is superseded (E5 resolved). The permission catalogue must not grant Platform Owner broad student-record access by default. The four role labels may be referenced by name in authorization code, but permissions stay data-driven; the catalogue content for each feature is still decided when the feature is implemented. Platform Owner operations must be auditable end to end.
+- **Dependencies:** The staff authentication model and enrolment authorization (Phase 1) implement against this set; the permission catalogue is seeded feature by feature.
+- **Approval:** Project owner, 2026-10-12.
+
+### D-022: Proposed initial production recovery targets
+
+- **Status:** Confirmed as proposed targets; **not verified guarantees**.
+- **Date:** 2026-10-12
+- **Context:** `docs/PRD.md` 11 and 12, `docs/DATABASE_DOCUMENTATION.md` 11 and `docs/DEPLOYMENT_AND_OPERATIONS.md` 9 required recovery objectives to be agreed and verified before production, and none had been agreed. D-015 also noted cost is not bounded for point-in-time recovery.
+- **Decision:** Record **proposed initial production targets** of **RPO 24 hours** and **RTO 24 hours**. These are planning targets, not verified guarantees, and they do not become commitments until the following **mandatory production-readiness tasks** are completed in a non-production environment:
+  - verify the selected plan's actual **backup capability**, including whether point-in-time recovery is available and affordable (`docs/DATABASE_DOCUMENTATION.md` 11);
+  - perform a **restoration test** and verify the plan can actually meet the D-022 targets;
+  - verify the **cost** of the production plan and any backup/recovery add-ons.
+- **Reasoning:** A 24-hour recovery profile is a deliberately modest starting point for the first release — it forces a documented backup and restoration discipline without inventing an aggressive objective the Free-plan-based cost model has not been verified to support. It is a target the owner can tighten later once real costs are known.
+- **Alternatives:** *Recording no target* — rejected; it blocks production planning and provider selection. *Aggressive targets (for example RPO in minutes via point-in-time recovery)* — rejected for now: unverified cost and not assumed.
+- **Consequences:** Development remains non-production and uses test data only; these targets apply to production readiness. Until verified, RPO/RTO must not be represented as met. Backup capability, restoration testing and cost verification are tracked as open production-readiness tasks in `docs/PHASE0_RISK_REGISTER.md` 5.
+- **Dependencies:** Production plan and actual-limit review, and the backup/restoration/cost verification above, per `docs/PRD.md` 12.
+- **Approval:** Project owner, 2026-10-12.
+
+### D-023: Interim learner-record retention framework
+
+- **Status:** Confirmed (interim framework); **no retention periods are set**.
+- **Date:** 2026-10-12
+- **Context:** `docs/ENROLMENT_PERMISSION_MODEL.md` 5.2 already restricted permanent deletion and made it subject to "an approved retention and deletion policy before production", and `docs/DATABASE_DOCUMENTATION.md` 9 requires approved retention rules. That policy did not exist; the owner approved an interim framework rather than inventing specific retention periods.
+- **Decision:** Adopt the following interim retention framework, in force for development and as the basis for the future production policy:
+  - **No permanent deletion of student records merely because a student leaves.** Leaving school is recorded by enrolment state, never by deletion.
+  - **Distinguish relevant enrolment states.** A learner is `active` or `inactive` (`docs/ENROLMENT_PERMISSION_MODEL.md` 5.2); portal access is a separate state (`docs/ENROLMENT_PERMISSION_MODEL.md` 8.1). Withdrawal is a state change, not a record deletion.
+  - **Restrict access to inactive records.** Inactive/withdrawn records are not part of routine operational views; access requires an authorized, scoped purpose and passes normal permission checks. (A student's own read access to their own records is unaffected.)
+  - **Audit sensitive actions.** Deactivation, reactivation, and any access to or export of inactive records are audited like other sensitive enrolment actions (`docs/ENROLMENT_PERMISSION_MODEL.md` 4).
+  - **No indefinite retention without a documented purpose.** No retention period is invented here; continued retention of any record beyond its current purpose requires a documented purpose, and every period is validated before production rather than assumed.
+- **Reasoning:** The reference systems deactivate rather than delete (`docs/ENROLMENT_PERMISSION_MODEL.md` 2), and the existing documentation already restricts deletion. Inventing specific periods (for example "keep records for N years") would fabricate a policy without legal or school input.
+- **Alternatives:** *Setting fixed retention periods now* — rejected; no Ghanaian legal analysis or school agreement validates them. *Allowing permanent deletion on leaving* — rejected; it contradicts the reference findings and `docs/DEPLOYMENT_AND_OPERATIONS.md` 14.
+- **Consequences:** Ghanaian privacy, child-protection and education-sector legal requirements, and any school-specific contractual obligations, are recorded as **items requiring validation before real-school onboarding**; they are not established compliance. A documented retention schedule and storage-object retention behavior (`docs/SECURITY_AND_PRIVACY.md` 10) still need to be produced and validated. The framework does not authorise indefinite holding: retention beyond a record's purpose must still be justified and periodically reviewed.
+- **Dependencies:** Legal validation (Ghana) and school obligations before onboarding; a documented retention schedule remains to be produced; audit-log retention follows the same framework.
+- **Approval:** Project owner, 2026-10-12.
+
 ## 5. Decisions Required Before Relevant Features
 
 These questions do not all need to be answered immediately. Resolve each one before it materially affects implementation.
@@ -245,7 +300,7 @@ These questions do not all need to be answered immediately. Resolve each one bef
 
 - The first complete vertical slice is student enrolment including class placement (D-018). Any change to that choice is a scope decision.
 - Which modules beyond enrolment are required for the first usable release?
-- Which user roles and permissions are necessary initially? Required before enrolment authorization is implemented. Still open; the interim default is in `docs/ENROLMENT_PERMISSION_MODEL.md` 5.1 and 6.
+- Which user roles and permissions are necessary initially? **Resolved 2026-10-12** — D-021: initial roles are Platform Owner, School Administrator, Teacher, and Student (Parent/Guardian access deferred). Required before enrolment authorization is implemented; each role's permission catalogue assignments remain feature-driven.
 - Which features should be available without additional payment or subscription arrangements?
 
 ### School operations
@@ -257,8 +312,8 @@ These questions do not all need to be answered immediately. Resolve each one bef
 
 ### Identity and access
 
-- Which roles exist at school level?
-- Which platform-level administrative capabilities are required?
+- Which roles exist at school level? **Resolved 2026-10-12** — D-021: School Administrator, Teacher and Student at school level; Platform Owner is platform-level (cross-school). The permission catalogue content per feature remains to be decided.
+- Which platform-level administrative capabilities are required? **Partially resolved 2026-10-12** — D-021: Platform Owner is a narrow, enumerated capability set that never grants unrestricted access to student or school records, and every Platform Owner access is explicitly authorized and audited. The concrete capability list is defined with the features that need it.
 - What is the approved process for inviting, suspending, and removing users?
 - ~~What is the approved approach for student portal authentication?~~ **Resolved** — D-020 (Confirmed): server-mediated school-code + username sign-in over an internal, non-deliverable account identifier, with Supabase Auth verifying the password. See `docs/ENROLMENT_PERMISSION_MODEL.md` 8.4.
 - Membership in more than one school is excluded from the first release by D-017. The conditions under which it may be introduced remain open.
@@ -266,15 +321,15 @@ These questions do not all need to be answered immediately. Resolve each one bef
 ### Data and privacy
 
 - Which learner and staff fields are necessary? **Partially resolved:** the learner registration fields are settled by D-019; staff fields and any non-enrolment learner fields remain open.
-- Which records must be retained, archived, exported, or deleted?
+- Which records must be retained, archived, exported, or deleted? **Partially resolved 2026-10-12** — D-023 establishes an interim retention framework: no permanent deletion merely because a student leaves (leaving is recorded by enrolment state), access to inactive records is restricted, sensitive actions are audited, and no retention period is set without a documented purpose. Specific periods, and Ghanaian legal and school-specific obligations, remain to be validated before real-school onboarding.
 - Which privacy notices, agreements, and legal requirements apply?
 - Which third-party services will process personal information?
 
 ### Operations
 
-- Which hosting plan meets the initial requirements?
-- What backup frequency and retention are needed?
-- What recovery objectives are acceptable?
+- Which hosting plan meets the initial requirements? **Partially resolved 2026-10-12** — development hosting is fixed (D-013: local Next.js + the existing `school-management-dev` Free project); the production plan, with Vercel as the proposed application-hosting option, remains subject to compatibility, cost and capability validation.
+- What backup frequency and retention are needed? **Partially resolved 2026-10-12** — D-022 records a proposed RPO 24 h target that implies a backup cadence at least as fine; the concrete frequency, backup retention, and any point-in-time recovery decision are validated during production-readiness.
+- What recovery objectives are acceptable? **Resolved as proposed targets 2026-10-12** — D-022: RPO 24 hours, RTO 24 hours; targets, not verified guarantees, until backup capability, a restoration test and cost are verified.
 - What monitoring and operating costs are acceptable?
 - Under what circumstances should a school move to dedicated infrastructure?
 

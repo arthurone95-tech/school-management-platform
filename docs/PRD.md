@@ -224,7 +224,7 @@ The following remain subject to validation:
 - Hosting budget and data residency requirements.
 - Academic calendar and grading differences.
 - Applicable Ghanaian privacy, child-protection and contractual obligations.
-- Recovery objectives. No RPO or RTO has been agreed, and none is assumed; see 12.
+- Recovery objectives. Proposed initial production targets are recorded (D-022): RPO 24 hours, RTO 24 hours. These are **targets, not verified guarantees**, and do not become commitments until verified; see 12.
 
 ## 12. Release Acceptance
 
@@ -234,7 +234,7 @@ The relevant workflows must meet their acceptance criteria, authorization tests 
 
 Before using real student records, review privacy, access, retention, support and incident-response procedures.
 
-Production onboarding additionally requires that the production hosting plan and its actual limits have been reviewed and approved, and that recovery objectives and a verified restoration test have been established. A development or free-tier environment must not be used to onboard a real school.
+Production onboarding additionally requires that the production hosting plan and its actual limits have been reviewed and approved (the proposed application-hosting option is Vercel, D-013), and that the recovery targets (D-022: RPO 24 hours, RTO 24 hours) and a verified restoration test have been established. A development or free-tier environment must not be used to onboard a real school.
 
 ## 13. Change Management
 

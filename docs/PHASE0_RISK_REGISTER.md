@@ -153,14 +153,15 @@ Severity follows `docs/ROADMAP_AND_TESTING.md` 8.
 | D-011 | Application framework (Next.js + TypeScript) | **Confirmed** 2026-10-11 — installed 16.4.0 | — |
 | D-020 | Student portal authentication approach | **Confirmed** 2026-10-11 (school code + username over an internal non-deliverable identifier) | Portal slice only; see R-08 |
 | — | First end-to-end workflow | **Confirmed** — D-018, enrolment | — |
-| — | Which school roles are required initially | **Open, no longer blocking** — interim defaults approved 2026-10-11 (`docs/ENROLMENT_PERMISSION_MODEL.md` 5.1, 6). Actual roles remain provisional | Authorization code must not hard-code an unvalidated role set |
+| — | Which school roles are required initially | **Resolved 2026-10-12** — D-021: Platform Owner, School Administrator, Teacher and Student; scope and school boundary per role in `docs/DECISIONS.md`. Parent/Guardian access deferred (E5 resolved) | Authorization may reference the four approved role labels; permission assignments remain feature-driven via the permission catalogue |
 | — | Baseline commit approval | **Resolved 2026-10-11** — documentation baseline committed as `2bca391` | — |
-| — | RPO / RTO | **Open** (`docs/DATABASE_DOCUMENTATION.md` 11) | Production readiness only |
-| — | Hosting provider | **Open** (D-013) | Deployment only |
+| — | RPO / RTO | **Resolved as proposed targets 2026-10-12** — RPO 24 h, RTO 24 h (D-022); targets, not verified guarantees. Backup capability, a non-production restoration test and cost verification are **mandatory production-readiness tasks** | Production readiness only |
+| — | Hosting provider | **Resolved for development 2026-10-12** — local Next.js + the existing `school-management-dev` Free project; **Vercel recorded as the proposed production option** (D-013), subject to compatibility and cost validation. Production requires a separately configured environment with backup, security, privacy and cost verified | Deployment only |
+| — | Learner retention / permanent-deletion policy | **Resolved 2026-10-12 as an interim framework** — D-023: no permanent deletion merely because a student leaves (leaving is recorded by enrolment state); access to inactive records is restricted; sensitive actions are audited; no retention period is invented. Ghanaian legal and school-specific obligations are **items requiring validation before real-school onboarding** | Production onboarding only |
 | — | Supabase signing-key mode | **Verified 2026-10-12** — asymmetric (the project JWKS returns an EC key), so `getClaims()` takes the local verification path (section 10.4) | — |
 | — | Supabase project creation | **Created and configured 2026-10-12** — non-production dev project `school-management-dev` (eu-west-1, ACTIVE_HEALTHY, Free plan as created). Migrations 0001 and 0002 applied and recorded in `supabase_migrations.schema_migrations`. Live verification results in section 10.4 | — |
 
-None of these can be resolved by the agent. Each requires an owner decision.
+Any item still unresolved in this table requires either an owner decision or production-readiness validation; no remaining row blocks Phase 1 implementation.
 
 ## 6. First Workflow Recommendation
 
@@ -245,7 +246,7 @@ Minimum fixtures: two schools, one user with membership in each, at least one no
 
 Development cost is zero. The Supabase Free plan is the only service in use, per D-015. No paid service is enabled, and none may be enabled without owner approval.
 
-Costs that will arise later and are **not** committed: the production plan, point-in-time recovery, and any hosting provider. These are recorded as open in `docs/DECISIONS.md` and gated in `docs/PRD.md` 12.
+Costs that will arise later and are **not** committed: the production plan, point-in-time recovery, and the production application-hosting option (Vercel proposed, D-013). These remain gated in `docs/PRD.md` 12. Cost verification of the production plan, recovery capabilities and the hosting option is a mandatory production-readiness task (D-022); development remains zero-cost on the Free plan (D-013, D-015).
 
 ## 9. Phase 0 Status
 
@@ -257,8 +258,9 @@ Costs that will arise later and are **not** committed: the production plan, poin
 | Initial risk list and test plan | Complete (sections 4 and 7) |
 | Live validation of the secure foundation | **Complete 2026-10-12** — migrations applied to and recorded on `school-management-dev`; auth mechanics (5), portal flow (22), tenant-isolation/RLS (15), sign-up guard (4), session refresh R-01 (3) and concurrent refresh R-02 (4) live checks pass (section 10.4) |
 | Phase 0 test-plan closeout | **Complete 2026-10-12** — revoked membership loses access immediately through a live session (7.3); token refresh observed through `proxy.ts` (7.2 / R-01); concurrent refresh without spurious sign-out (7.2 / R-02); no server-only secret in the production build output, verified by scanning `.next/` (7.1). Items that need a UI or features that do not exist yet — sign-out/session-expiry behaviour (7.2), platform administration and cross-school file download (7.3), responsive/accessibility (7.5) and connectivity (7.6) — are tracked for Phase 1 |
+| Owner decision items (roles, RPO/RTO, retention, hosting) | **Complete 2026-10-12** — D-021 (initial roles and boundaries), D-022 (proposed recovery targets), D-023 (interim retention framework), D-013 (hosting: development fixed, Vercel proposed for production) |
 
-Phase 0 exit criteria are met. The two follow-on items recorded in section 5 were resolved or downgraded on 2026-10-11: the documentation baseline was committed as `2bca391`, and the role question no longer blocks Phase 1 because interim defaults were approved (D-019, `docs/ENROLMENT_PERMISSION_MODEL.md` 5.1). Actual school roles remain provisional and must not be hard-coded as validated policy.
+Phase 0 exit criteria are met: the first workflow is clear (D-018); critical architectural assumptions have been checked live against the non-production dev project (section 10.4); and no unresolved decision blocks safe implementation — the owner closed the remaining section 5 decisions (roles, RPO/RTO, retention, hosting) on 2026-10-12 (D-013, D-021, D-022, D-023). Production-only validations remain open and are tracked here and in `docs/DECISIONS.md`: review and approval of the production plan and its actual limits; backup capability / restoration test / cost verification against the proposed RPO 24 h / RTO 24 h targets (D-022); Vercel compatibility and cost validation (D-013); Ghanaian retention-law and school-obligation validation (D-023); and data-residency review — all before any real-school onboarding. Development continues on the Free plan with test data and remains non-production (D-015).
 
 ## 10. Appendices
 
@@ -366,5 +368,5 @@ The first migration, `supabase/migrations/20261011000001_enrolment_foundation.sq
 - The student password policy (min 8 / max 72 characters) remains **interim**; it is enforced in code and unit-tested.
 - Phase 0 test-plan items that need a UI or features that do not exist yet are deferred to Phase 1, deliberately: sign-out and session-expiry behaviour in the interface (7.2), platform administration and cross-school file download (7.3), responsive/accessibility checks at mobile/tablet/desktop viewports (7.5), and connectivity/retry behaviour for a real workflow (7.6).
 - Staff invitation email flows (D-018), the staff authentication model, and a non-development environment are outside this slice and remain open for Phase 1 completion (`docs/ROADMAP_AND_TESTING.md` Phase 1).
-- RPO/RTO and learner retention/permanent-deletion policy remain open and are unaffected by this slice.
+- RPO/RTO now have proposed production targets (D-022: RPO 24 h / RTO 24 h, not verified guarantees) and learner retention an interim framework (D-023); both were decided 2026-10-12. Live verification of backup capability, a non-production restoration test and the associated costs remains an open **production-readiness** task, unaffected by this slice.
 - The `AGENTS.md` managed block written by `next dev` was removed and regeneration disabled (`agentRules: false`, Next 16.4).

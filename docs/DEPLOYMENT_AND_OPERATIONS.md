@@ -50,6 +50,8 @@ Select hosting based on compatibility, security, operational simplicity, and tot
 
 Do not claim that a provider supports a feature or usage level until it has been verified.
 
+Hosting status: development is fixed on the local Next.js setup and the existing `school-management-dev` project (D-013); **Vercel** is the proposed production application-hosting option, subject to compatibility and cost validation (D-013).
+
 ## 4. Environments
 
 Keep development, testing, and production logically separate.
@@ -173,7 +175,7 @@ Before production launch, define and document:
 
 Verify the capabilities and costs of the actual Supabase plan and any additional backup tooling.
 
-Recovery Point Objective (RPO) and Recovery Time Objective (RTO) are **not yet agreed** and must not be assumed. Settle them as part of production-readiness review, then verify the chosen plan can meet them in a non-production restoration test before committing to it.
+Recovery Point Objective (RPO) and Recovery Time Objective (RTO) have **proposed initial production targets** (D-022: RPO 24 hours, RTO 24 hours). They are targets, not verified guarantees: verify that the chosen plan can meet them in a non-production restoration test, and verify the associated costs, before committing to them at production-readiness review.
 
 Perform restoration tests in a non-production environment. A backup that has never been restored is not sufficient evidence of recoverability.
 

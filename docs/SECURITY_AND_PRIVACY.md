@@ -173,7 +173,7 @@ Requirements include:
 - Use short-lived signed URLs when appropriate.
 - Consider malware scanning or other inspection for file types and risks that justify it.
 - Prevent executable content from being served in an unsafe context.
-- Define retention and deletion behavior for both database metadata and storage objects.
+- Define retention and deletion behavior for both database metadata and storage objects. The interim framework in D-023 applies until production policy is validated: no permanent deletion merely because a student leaves (leaving is recorded by enrolment state); access to inactive records is restricted; sensitive actions are audited; and no retention period is set without a documented purpose.
 
 Test storage policies independently from database RLS. A protected database row does not automatically protect a storage object.
 

@@ -1,10 +1,10 @@
 # Enrolment Field, Identifier and Permission Model
 
 **Project:** School Management Platform\
-**Document status:** Sections 4, 7 and 8 approved; section 5 approved defaults; section 6 remains provisional; section 9 has one open item (E1)\
-**Version:** 0.4\
-**Date:** 2026-10-11\
-**Scope:** Student enrolment, class placement, and student portal account access (D-018, D-019, D-020)
+**Document status:** Sections 4, 7 and 8 approved; section 5 approved defaults; section 6 provisional except the initial role set (approved, D-021); section 9 has one open item (E1)\
+**Version:** 0.5\
+**Date:** 2026-10-12\
+**Scope:** Student enrolment, class placement, and student portal account access (D-018, D-019, D-020, D-021)
 
 ## 1. Purpose and Standing
 
@@ -13,7 +13,7 @@ This document separates four things that are otherwise easy to confuse:
 1. **Mandatory platform safeguards** — security, tenant isolation, data integrity. Not configurable, not optional. Section 4.
 2. **Documented implementation defaults** — safe choices that let development proceed without knowing every school's preferences. Section 5.
 3. **Approved field, identifier and account model** — recorded as D-019. Sections 7 and 8.
-4. **Provisional school-specific policy** — roles, approval chains, class rules. Unverified, configurable, revisable. Section 6.
+4. **Provisional school-specific policy** — approval chains, class rules. Unverified, configurable, revisable. Section 6. (The **initial role set** is no longer provisional — approved by D-021; see 5.1.)
 
 Governing documents win over anything here: `docs/FEATURE_SPECIFICATIONS.md` 3, `docs/SYSTEM_ARCHITECTURE.md` 6, `docs/SECURITY_AND_PRIVACY.md` 7, `docs/DATABASE_DOCUMENTATION.md` 4.2.
 
@@ -30,7 +30,7 @@ Evidence base: code and documentation inspection of **two** systems — **YAW Ac
 | Records can be deactivated; permanent deletion is restricted | **Supports the default** in 5.2 — deactivate, do not hard-delete |
 | Class placement is free text, with no enforced capacity, age, or prerequisite rules | **Not adopted as free text.** See 5.3 — free text conflicts with data integrity |
 | Curricula and grading labels differ between the systems | Confirms school-specific variation is real. Grading remains out of scope |
-| No universal staff-role structure; no validated approval process for corrections | **Remains unresolved.** Sections 6 and 9 keep these provisional |
+| No universal staff-role structure; no validated approval process for corrections | **Partially resolved 2026-10-12.** The initial role set is decided (D-021, section 5.1); the approval-process details remain provisional (sections 6 and 9) |
 | Separate Firebase projects; no shared multi-tenant architecture | Evidence of a gap in the reference systems. Our shared-deployment model is D-003/D-004 and is unchanged |
 
 **On Firebase:** the reference systems use it. That is not a reason to revisit D-015. Supabase was selected over Firebase because Postgres RLS, composite foreign keys and exact numeric types are binding requirements in `docs/DATABASE_DOCUMENTATION.md` 4.2, 5.1 and 6. Adopting a per-school-project model would also contradict D-003 and D-004.
@@ -40,10 +40,10 @@ Evidence base: code and documentation inspection of **two** systems — **YAW Ac
 | Part | Status |
 |---|---|
 | Section 4 — mandatory safeguards | **Binding.** Not negotiable per school |
-| Section 5 — implementation defaults | **Approved defaults** (D-019 and owner approval, 2026-10-11). Revisable without a schema redesign |
+| Section 5 — implementation defaults | **Approved defaults** (D-019 and owner approval, 2026-10-11). The initial role set in 5.1 is owner-approved (D-021, 2026-10-12). Revisable without a schema redesign |
 | Sections 7 and 8 — fields, identifiers, account access | **Approved** (D-019) |
 | Section 8.4 — student portal authentication approach | **Approved** (D-020, 2026-10-11) |
-| Section 6 — school-specific roles, approval chains, class structure | **Provisional** — actual responsibilities are unvalidated |
+| Section 6 — school-specific roles, approval chains, class structure | **Provisional** — except the initial role set (5.1, approved D-021); approval-policy and permission details remain unvalidated |
 | Section 9 — unresolved decisions | **Open** unless marked otherwise |
 
 ## 4. Mandatory Platform Safeguards
@@ -66,15 +66,22 @@ Evidence base: code and documentation inspection of **two** systems — **YAW Ac
 
 Safe defaults approved so that development can proceed without knowing every school's preferences. Each is a starting point, not a permanent requirement.
 
-### 5.1 Minimal role set, data-driven permissions
+### 5.1 Initial role set, data-driven permissions
 
-Ship **two** school-level roles — **school administrator** and **school staff** — with the permission set stored as data, not hard-coded role names. Adding headteacher, registrar or teacher later becomes configuration, not a schema change.
+The **initial role set** is approved (D-021, 2026-10-12): **Platform Owner, School Administrator, Teacher, and Student**. Parent/Guardian access is **deferred**. This replaces the earlier interim default of *school administrator + school staff* (2026-10-11); redeploying the interim pair would contradict D-021.
 
-This avoids guessing a role structure the investigation could not confirm, without foreclosing one.
+Permissions are stored as **data** (`role_permissions`), never hard-coded role names. The four labels may be referenced by name in authorization code, but each role's actual authority comes from the permission catalogue. Initial scope and school boundary per role:
+
+- **Platform Owner** — platform-level, **cross-school** administrative capability. Capabilities are a narrow, enumerated set (for example creating and configuring schools and platform settings). Access to student or school records is **not** unrestricted: it requires explicit, scoped authorization for the specific operation and is **audited**; the label alone never bypasses school isolation or RLS.
+- **School Administrator** — **exactly one school** (its `school_members` row). Manages that school's own members, enrolment records, class configuration, portal activation/recovery, and settings. No cross-school capability.
+- **Teacher** — **exactly one school**. School-scoped teaching role. By default the teacher is assigned **no** permissions; each approved feature seeds its own teacher permission (for example, view of own-class rosters) through the catalogue.
+- **Student** — **exactly one school** (D-017) and only the student's **own** records (own profile, own portal data, own report cards when implemented). A student session never has staff-level permissions.
+
+Adding headteacher, registrar or parent/guardian later remains configuration, not a schema change, subject to owner approval.
 
 ### 5.2 Deactivate, do not delete
 
-A learner has a status of `active` or `inactive`. The enrolment workflow performs **no hard delete**. Supported by the finding that records are deactivated and deletion restricted, and consistent with `docs/DATABASE_DOCUMENTATION.md` 9 on retention. Permanent deletion remains subject to an approved retention and deletion policy before production.
+A learner has a status of `active` or `inactive`. The enrolment workflow performs **no hard delete**. Supported by the finding that records are deactivated and deletion restricted, and consistent with `docs/DATABASE_DOCUMENTATION.md` 9 on retention. Permanent deletion remains subject to an approved retention and deletion policy before production. An interim retention framework is approved (D-023): leaving a school is recorded by state, never by permanent deletion; access to inactive records is restricted and sensitive actions (deactivation, reactivation, and access to or export of inactive records) are audited; and no retention period is set without a documented purpose. Specific periods, and Ghanaian legal and school-specific obligations, remain to be validated before real-school onboarding.
 
 ### 5.3 Classes are school-scoped entities, not free text
 
@@ -92,18 +99,18 @@ A learner has at most one current class placement. The data model must accommoda
 
 ## 6. Provisional School-Specific Policy
 
-`[PROVISIONAL]` — unverified. Configurable. Revisable without a schema change.
+`[PROVISIONAL]` — unverified. Configurable. Revisable without a schema change. (The **initial role set** in 5.1 is approved by D-021; the approval-policy and permission-detail rows below remain provisional.)
 
 | Question | Status | Default while unresolved |
 |---|---|---|
-| Do headteacher, registrar and teacher exist as distinct roles? | Unverified — no universal structure found | Only administrator and staff (5.1) |
-| Which roles may create, view, correct or approve enrolments? | Unverified | Administrator full; staff create and view |
-| May teachers view enrolments for their assigned classes? | Unverified | No teacher role yet; revisit when the role exists |
+| Do headteacher, registrar and teacher exist as distinct roles? | **Resolved for the initial set (D-021)** — Teacher exists; headteacher, registrar and parent/guardian are not in the initial set | Teacher is a distinct role; other school-specific roles are added later by configuration (5.1) |
+| Which roles may create, view, correct or approve enrolments? | Unverified | School Administrator has full enrolment management; Teacher and Student have no enrolment permissions by default (granted only through the catalogue when an approved feature requires it) |
+| May teachers view enrolments for their assigned classes? | Unverified | No teacher permission by default; seeded through the catalogue when an approved feature requires it |
 | Do corrections need a second approval? | Unverified — no validated process found | Off, configurable per school (5.4) |
 | Are classes grouped by stream, year or level? | Unverified | Single school-scoped class list (5.3) |
 | Is class placement ever year-scoped? | Unverified | Not in v1. See section 9, E1 |
-| Who may withdraw a learner? | Unverified | Administrator only |
-| Who may initiate student account activation and assisted resets? | Unverified | School administrator |
+| Who may withdraw a learner? | Unverified | School Administrator only |
+| Who may initiate student account activation and assisted resets? | Unverified | School Administrator |
 
 ## 7. Enrolment Field and Identifier Model (Approved)
 
@@ -222,12 +229,12 @@ Only decisions that materially affect the enrolment workflow or its database str
 | E2 | Exact required field set | **Resolved** — D-019, section 7.1 | Determines table columns | No |
 | E3 | One class per learner, or many? | **Resolved as a default** — one current placement, history retained (5.5) | Shape of the placement table | No |
 | E4 | Does correction need second approval? | **Resolved as a default** — off by default, configurable per school (5.4). Audit is mandatory either way | Whether an approval queue is needed | No |
-| E5 | Final school role set | **Open** — administrator and staff, permissions as data (5.1) | Seed data and the permission catalogue, not the schema | No |
+| E5 | Final school role set | **Resolved 2026-10-12** — D-021: Platform Owner, School Administrator, Teacher, Student; permissions as data (5.1) | Seed data and the permission catalogue, not the schema | No |
 | E6 | Student portal authentication approach | **Resolved** — D-020, school-code + username over an internal non-deliverable identifier (8.4) | Portal sign-in implementation. Not in the first slice | No |
 
 ### What can safely wait
 
-- Final role names and the permission catalogue — configuration, not schema.
+- The permission **catalogue content** per feature — configuration, not schema. (The final role names are settled: D-021.)
 - Approval workflow — configurable, default off.
 - Stream, level or year structures — add as configuration later.
 - Student portal authentication **implementation** — the approach is settled by D-020, but the code is needed only when the portal slice starts.
@@ -250,6 +257,6 @@ The student **portal account model** in section 8 is approved for design coheren
 ## 11. Next Steps
 
 1. Sections 4, 5, 7 and 8 are approved; implement them as the enrolment slice is built.
-2. Leave section 6 provisional and revisit when school responsibilities are actually validated.
+2. The initial role set in section 6 is approved (D-021); keep the approval-policy and permission-detail rows provisional until school responsibilities are actually validated.
 3. Implement the D-020 approach (8.4) when the portal slice starts, and verify it against a real Supabase project first.
 4. Resolve E1 (year-scoped placement) before the placement schema is finalised for production.
