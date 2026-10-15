@@ -11,6 +11,10 @@
 // cookie concurrently. Assert both are served, at least one rotated the token,
 // and a follow-up request with the rotated cookie still refreshes.
 //
+// "Still refreshes" accepts either an advanced access-token `exp` or a rotated
+// refresh token: `exp` is second-granular, so a follow-up refresh in the same
+// second as the winner's rotation ties instead of increasing.
+//
 // Requirements: app running and seeded (02/03 first), learner A active, and
 // SUPABASE_MGMT_TOKEN / SUPABASE_MGMT_PROJECT_REF in the environment.
 //
@@ -21,6 +25,7 @@ import {
   accessTokenExpFromCookieValue,
   cookieMapFromSetCookie,
   cookieHeader,
+  refreshTokenFromCookieValue,
 } from "./session-cookies.mjs";
 
 const base = appBaseUrl();
@@ -34,6 +39,16 @@ function parseExpOrNull(map) {
   if (!value) return null;
   try {
     return accessTokenExpFromCookieValue(value);
+  } catch {
+    return null;
+  }
+}
+
+function refreshTokenOrNull(map) {
+  const value = Object.values(map)[0];
+  if (!value) return null;
+  try {
+    return refreshTokenFromCookieValue(value);
   } catch {
     return null;
   }
@@ -127,18 +142,30 @@ async function main() {
     );
 
     const { map: winnerMap, exp: winnerExp } = winnerOf(m1, e1, m2, e2);
+    const winnerRefresh = refreshTokenOrNull(winnerMap);
     const followUp = await fetchWithCookies("/", winnerMap);
     const fMap = cookieMapFromSetCookie(followUp.setCookie);
     const fExp = parseExpOrNull(fMap);
+    const fRefresh = refreshTokenOrNull(fMap);
+    // A refresh is proven when the follow-up either advanced the access-token
+    // `exp` or rotated the refresh token. `exp` is second-granular, so a refresh
+    // landing in the same second as the winner's rotation ties rather than
+    // increases; the refresh-token rotation is the tie-independent evidence.
+    const refreshRotated =
+      fRefresh !== null && winnerRefresh !== null && fRefresh !== winnerRefresh;
+    const refreshed =
+      (fExp !== null && winnerExp !== null && fExp > winnerExp) ||
+      refreshRotated;
     report.check(
       followUp.status === 200 &&
         fExp !== null &&
-        (winnerExp === null || fExp > winnerExp) &&
-        fExp > exp0,
+        (winnerExp === null || fExp >= winnerExp) &&
+        fExp > exp0 &&
+        refreshed,
       "no spurious sign-out: follow-up navigation still refreshes",
       winnerExp === null
         ? "winner had no rotated token; likely reuse-detection revoked the session family"
-        : `exp ${winnerExp} -> ${fExp}`,
+        : `exp ${winnerExp} -> ${fExp}, refreshRotated=${refreshRotated}`,
     );
   } finally {
     await mgmtFetch("/config/auth", "PATCH", { jwt_exp: originalExpiry });

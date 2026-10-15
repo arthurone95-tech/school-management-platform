@@ -3,23 +3,39 @@
 // @supabase/ssr stores the session in `sb-<ref>-auth-token` cookies, possibly
 // split into `.0`, `.1`, ... chunks and/or base64-prefixed. The combined value
 // is the JSON session object auth-js writes to storage.
-export function accessTokenExpFromCookieValue(value) {
+function sessionFromCookieValue(value) {
   let v = value;
   if (v.startsWith("base64-")) {
     v = Buffer.from(v.slice("base64-".length), "base64url").toString("utf8");
   }
-  let token;
   try {
-    token = JSON.parse(v).access_token;
+    return JSON.parse(v);
   } catch {
-    token = v; // older layout: the raw JWT is the cookie value
+    return { access_token: v }; // older layout: the raw JWT is the cookie value
   }
+}
+
+export function accessTokenExpFromCookieValue(value) {
+  const session = sessionFromCookieValue(value);
+  const token = session.access_token;
   if (!token) throw new Error("no access token found in auth cookie");
   const payload = JSON.parse(
     Buffer.from(token.split(".")[1], "base64url").toString("utf8"),
   );
   if (!Number.isFinite(payload.exp)) throw new Error("access token has no exp");
   return payload.exp;
+}
+
+/**
+ * Returns the refresh token stored alongside the access token, or null when the
+ * cookie carries none. Used to prove a refresh actually happened even when the
+ * new access token's `exp` ties with the previous one (second granularity).
+ */
+export function refreshTokenFromCookieValue(value) {
+  const session = sessionFromCookieValue(value);
+  return typeof session.refresh_token === "string"
+    ? session.refresh_token
+    : null;
 }
 
 /** Combines chunked `sb-...-auth-token` Set-Cookie values into a cookie map. */

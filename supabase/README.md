@@ -27,6 +27,34 @@ configurable without paid custom SMTP). The staff-invite live check therefore
 sends one synthetic `@gmail.com` invitation per run; real deployments must use
 real recipient domains.
 
+## Creating a second environment (non-production)
+
+A second environment with the **same schema** is provisioned from these
+migrations alone. The scoped Management API token used for dev cannot create
+projects (`GET /v1/projects` returns `403`, verified 2026-10-14), so project
+creation is a dashboard/user action:
+
+1. Create a Free project in the Supabase dashboard and record its project
+   reference, API URL and publishable key.
+2. Apply every migration **in order** to the new project with the Management-API
+   helper (or the CLI path below with that project's database password):
+
+   ```sh
+   $env:SUPABASE_MGMT_PROJECT_REF = "<new-project-ref>"
+   node tests/live/apply-migration.mjs supabase/migrations/20261011000001_enrolment_foundation.sql
+   node tests/live/apply-migration.mjs supabase/migrations/20261011000002_portal_signup_guard.sql
+   node tests/live/apply-migration.mjs supabase/migrations/20261012000003_staff_auth_roles.sql
+   ```
+
+   This needs a `SUPABASE_MGMT_TOKEN` with access to the new project.
+3. Re-apply the dev Auth configuration (D-020/D-024): sign-up disabled
+   (`disable_signup = true`), the migration-0002 sign-up-guard Auth Hook
+   enabled, and real SMTP for invitation email. The Free-plan pooler's 2/hour
+   send budget and `@example.com` rejection above are **dev-only** limitations.
+4. Point `.env.local` at the new project and run the live suite against it
+   (`node tests/live/run-all.mjs`) to prove the schema and configuration on the
+   new environment.
+
 ## Layout
 
 ```
