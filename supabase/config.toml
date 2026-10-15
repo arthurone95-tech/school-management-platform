@@ -9,15 +9,17 @@
 #     kept only because the CLI expects the keys. The remote project's Site URL
 #     and redirect allow-list are configured in the Supabase dashboard.
 #
-# Migration workflow:
-#   npx supabase login                 # uses a scoped access token
-#   npx supabase link --project-ref ysjumhlyqhoobywgqand   # prompts for the
+# Migration workflow (on this workstation invoke the CLI as `npx supabase@latest`;
+# a cached bare `npx supabase` resolved a package missing the win32-x64 binary):
+#   npx supabase@latest login              # scoped access token (or interactive)
+#   npx supabase@latest link --project-ref ysjumhlyqhoobywgqand   # prompts for the
 #                                       # project database password
-#   npx supabase db push               # applies only missing migrations; the
-#                                       # migrations already applied via the
-#                                       # Management API and recorded in
-#                                       # supabase_migrations.schema_migrations
-#                                       # are skipped, not re-run
+#   npx supabase@latest db push --linked --dry-run   # safe check first
+#   npx supabase@latest db push --linked             # applies only missing migrations
+#
+# `db push` reads supabase_migrations.schema_migrations, so the migrations already
+# applied via the Management API and recorded there are skipped, not re-run
+# (verified 2026-10-15: remote history matches the three local migration files).
 #
 # Until the database password is available, new migrations are applied with the
 # committed helper `node tests/live/apply-migration.mjs` against the dev

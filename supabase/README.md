@@ -27,6 +27,23 @@ configurable without paid custom SMTP). The staff-invite live check therefore
 sends one synthetic `@gmail.com` invitation per run; real deployments must use
 real recipient domains.
 
+**Email-template limitation (verified 2026-10-15).** On the Free plan with the
+default mailer, editing the Auth email templates is **refused** by the
+Management API: "Email template modification is not available for free tier
+projects using the default email provider. Please upgrade your plan or
+configure a custom SMTP provider." The invitation template therefore cannot be
+pointed at the app's `/auth/confirm`. The default template routes through
+Supabase's own `/auth/v1/verify`, which 303-redirects to the app with the
+session in the URL **fragment** (`…/auth/confirm#access_token=…`); a server
+route never receives a fragment, and the app's SSR model requires a `token_hash`
+query parameter. Consequence: **the real invitation-email click cannot complete
+acceptance** until a custom SMTP provider (which also unlocks template editing)
+or an upgraded plan is configured, and the invite template is set to
+`{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=invite&next=/join`.
+The app-side chain (`/auth/confirm` → `/join` → set-password → sign-in) is
+verified independently with a generated single-use token
+(`tests/live/09-staff-auth.mjs`, `/api/staff/invite` renders the flow).
+
 ## Creating a second environment (non-production)
 
 A second environment with the **same schema** is provisioned from these
@@ -88,18 +105,29 @@ Only run this against an authorised **non-production** project.
 ### 2. Supabase CLI path (ready, needs one user-supplied value)
 
 The repository is CLI-ready (`supabase/config.toml`, migrations named for the
-CLI). The CLI path requires the project **database password**, which is never
-stored in this repo; the owner can supply it and then:
+CLI). On this workstation the CLI is invoked as `npx supabase@latest` (a cached
+bare `npx supabase` resolved a package missing the win32-x64 platform binary and
+failed to start). Verified 2026-10-15: the remote
+`supabase_migrations.schema_migrations` holds exactly the three local
+migrations (matching `version` and `name`), so `db push` has nothing to apply.
+The CLI path still requires the project **database password**, which is never
+stored in this repo; the owner can supply it locally and then:
 
 ```sh
-npx supabase login                                        # scoped access token
-npx supabase link --project-ref ysjumhlyqhoobywgqand      # prompts for db password
-npx supabase db push                                      # applies pending migrations
+npx supabase@latest login                                     # scoped access token (or interactive)
+npx supabase@latest link --project-ref ysjumhlyqhoobywgqand   # prompts for the db password
+npx supabase@latest db push --linked --dry-run                # safe check: should list nothing to apply
+npx supabase@latest db push --linked                          # only if the dry-run lists work
 ```
 
 `db push` compares against `supabase_migrations.schema_migrations`, so the
 migrations already applied via the Management API are **skipped, not
-re-applied**. This is the intended long-term workflow.
+re-applied** (`supabase migration list --linked` prints the same history). This
+is the intended long-term workflow. Without linking, the same history can be
+read read-only through the Management API —
+`POST /v1/projects/<ref>/database/query` with
+`{"query":"select version, name from supabase_migrations.schema_migrations order by version"}`
+— and compared with the files in `supabase/migrations/`.
 
 Never edit a deployed database by hand, and never push to a production project
 without the approval described in `AUTOMATION_WORKFLOW.md` 4.

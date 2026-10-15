@@ -5,9 +5,11 @@
 // and school scoping (never accepts a school id from the request), revocation
 // denial, and the password-set step of invitation acceptance.
 //
-// The actual invitation-email click (Supabase's built-in single-use link) is a
-// browser/manual step and is not exercised here; the email-side of acceptance
-// is simulated with email-confirmed server-provisioned users.
+// The literal email delivery is a manual/browser step (see 10.4). The app-side
+// acceptance chain that the emailed link drives — /auth/confirm exchanging a
+// single-use token_hash for a session, then /join — IS exercised here using
+// admin.generateLink, which returns the same hashed token the email carries, so
+// no real mailbox is needed.
 import { adminClient, appBaseUrl, loadState, createReporter } from "./lib.mjs";
 
 const base = appBaseUrl();
@@ -71,6 +73,20 @@ async function getJson(path, cookie) {
   return { status: res.status, payload };
 }
 
+async function getRaw(path, cookie) {
+  const res = await fetch(`${base}${path}`, {
+    headers: cookie ? { cookie } : {},
+    redirect: "manual",
+  });
+  const body = await res.text().catch(() => "");
+  return {
+    status: res.status,
+    location: res.headers.get("location"),
+    setCookie: res.headers.getSetCookie?.() ?? [],
+    body,
+  };
+}
+
 async function waitForServer(attempts = 60) {
   for (let i = 0; i < attempts; i += 1) {
     try {
@@ -120,6 +136,20 @@ async function createConfirmedUser(email, password) {
     email,
     password,
     email_confirm: true,
+    app_metadata: { provisioned_by: "school-platform" },
+  });
+  if (error || !data.user) throw error ?? new Error("user creation failed");
+  return data.user;
+}
+
+/**
+ * Creates an unconfirmed auth user carrying the provisioning marker — the
+ * state `inviteStaffUser` step 1 leaves behind, before the invitation email.
+ */
+async function createPendingUser(email) {
+  const { data, error } = await admin.auth.admin.createUser({
+    email,
+    email_confirm: false,
     app_metadata: { provisioned_by: "school-platform" },
   });
   if (error || !data.user) throw error ?? new Error("user creation failed");
@@ -489,6 +519,123 @@ async function main() {
         newPasswordNow.payload?.role === "teacher",
       "the new password works (200) and returns the staff role",
       `got ${newPasswordNow.status} role=${newPasswordNow.payload?.role}`,
+    );
+    // --- invitation email-link route (no real mailbox needed) --------------
+    // The only manual step is the literal email delivery. Everything the emailed
+    // link drives on the app side is exercised here: the token_hash generated
+    // below is the same single-use token the email body carries, so the
+    // /auth/confirm exchange and the /join step are verified without a mailbox.
+    const linkEmail = randomEmail("confirm.link");
+    const linkUser = await createPendingUser(linkEmail);
+    const linkMember = await admin
+      .from("school_members")
+      .insert({
+        school_id: state.schools.A,
+        user_id: linkUser.id,
+        role: "teacher",
+        status: "invited",
+      })
+      .select("id")
+      .single();
+    if (linkMember.error) throw linkMember.error;
+    track(linkUser, linkMember.data.id);
+
+    const generated = await admin.auth.admin.generateLink({
+      type: "invite",
+      email: linkEmail,
+      options: { redirectTo: `${base}/auth/confirm` },
+    });
+    if (generated.error) throw generated.error;
+    const tokenHash = generated.data.properties.hashed_token;
+    report.check(
+      typeof tokenHash === "string" && tokenHash.length > 0,
+      "an invitation link token is generated (the value the email carries)",
+      `verification_type=${generated.data.properties.verification_type}`,
+    );
+
+    const confirmNoParams = await getRaw("/auth/confirm", null);
+    report.check(
+      (confirmNoParams.location ?? "").includes("auth=error"),
+      "/auth/confirm without a token falls back to the error marker",
+      `status=${confirmNoParams.status} location=${confirmNoParams.location}`,
+    );
+
+    const confirmBadToken = await getRaw(
+      "/auth/confirm?token_hash=deadbeefdeadbeef&type=invite",
+      null,
+    );
+    report.check(
+      (confirmBadToken.location ?? "").includes("auth=error"),
+      "/auth/confirm with an invalid token falls back to the error marker",
+      `status=${confirmBadToken.status} location=${confirmBadToken.location}`,
+    );
+
+    const joinAnon = await getRaw("/join", null);
+    report.check(
+      !joinAnon.body.includes("Choose a password"),
+      "/join does not render the password form without a session",
+      `status=${joinAnon.status}`,
+    );
+
+    const confirm = await getRaw(
+      `/auth/confirm?token_hash=${encodeURIComponent(tokenHash)}&type=invite`,
+      null,
+    );
+    const confirmLocation = new URL(confirm.location ?? "/", base);
+    const linkJar = createCookieJar();
+    linkJar.applySetCookie(confirm.setCookie);
+    report.check(
+      confirm.status >= 300 &&
+        confirm.status < 400 &&
+        confirmLocation.pathname === "/join",
+      "the invitation link's /auth/confirm exchanges the token and redirects to /join",
+      `status=${confirm.status} location=${confirmLocation.pathname}`,
+    );
+    report.check(
+      linkJar.header().length > 0,
+      "the token exchange establishes a session for the invited user",
+      linkJar.header().length > 0 ? "session cookie set" : "no cookie set",
+    );
+
+    const joinWithSession = await getRaw("/join", linkJar.header());
+    report.check(
+      joinWithSession.status === 200 &&
+        joinWithSession.body.includes("Choose a password"),
+      "/join renders the password form for the invited session",
+      `status=${joinWithSession.status}`,
+    );
+
+    const linkSetPassword = await postJson(
+      "/api/staff/set-password",
+      { password: "ChosenPassword123!" },
+      linkJar.header(),
+    );
+    report.check(
+      linkSetPassword.status === 200,
+      "the invited user sets a password at /join",
+      `got ${linkSetPassword.status}`,
+    );
+
+    const linkSignIn = await postJson(
+      "/api/staff/sign-in",
+      { email: linkEmail, password: "ChosenPassword123!" },
+      null,
+    );
+    report.check(
+      linkSignIn.status === 200 && linkSignIn.payload?.role === "teacher",
+      "the invited user signs in with the chosen password (activates membership)",
+      `got ${linkSignIn.status} role=${linkSignIn.payload?.role}`,
+    );
+
+    const linkMemberAfter = await admin
+      .from("school_members")
+      .select("status")
+      .eq("id", linkMember.data.id)
+      .single();
+    report.check(
+      linkMemberAfter.data?.status === "active",
+      "the membership activated through the email-link acceptance is active",
+      `status=${linkMemberAfter.data?.status}`,
     );
   } finally {
     // Remove fixtures (memberships first: FK to auth.users is ON DELETE RESTRICT).
