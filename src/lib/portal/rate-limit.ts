@@ -75,6 +75,13 @@ export class SlidingWindowLimiter {
 export const signInLimiter = new SlidingWindowLimiter(10, 60_000);
 /** Activation attempts per client, per window. */
 export const activationLimiter = new SlidingWindowLimiter(10, 60_000);
+/**
+ * Staff invitation preview/accept attempts per client, per window. Invitation
+ * tokens are 256-bit and single-use, so this is a brake on abuse, not the
+ * primary control; it is deliberately a little looser than activation because a
+ * recipient may preview then accept.
+ */
+export const invitationLimiter = new SlidingWindowLimiter(30, 60_000);
 
 /**
  * Derives a rate-limit key. Combines the caller's network address with the

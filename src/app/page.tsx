@@ -14,8 +14,10 @@ export default function HomePage() {
         </li>
         <li>
           <strong>Staff:</strong> email + password sign-in, and
-          administrator-issued invitations delivered by email link; invited
-          staff activate their membership on first sign-in.
+          administrator-issued invitations shared as a single-use activation
+          link (no email delivery required); the invited person sets a password
+          and activates their membership by opening the link at{" "}
+          <code>/join</code>.
         </li>
         <li>
           <strong>School isolation:</strong> access is enforced by Row Level

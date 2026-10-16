@@ -4,8 +4,11 @@ import { PASSWORD_MAX_LENGTH } from "@/lib/portal/requests";
 
 import {
   EMAIL_MAX_LENGTH,
+  INVITATION_INVALID_MESSAGE,
+  parseStaffInvitationAcceptInput,
+  parseStaffInvitationRevokeInput,
+  parseStaffInvitationTokenInput,
   parseStaffInviteInput,
-  parseStaffSetPasswordInput,
   parseStaffSignInInput,
 } from "./requests";
 
@@ -117,27 +120,100 @@ describe("parseStaffInviteInput", () => {
   });
 });
 
-describe("parseStaffSetPasswordInput", () => {
-  it("accepts a valid password", () => {
-    const result = parseStaffSetPasswordInput({ password: "correct horse" });
-    expect(result).toEqual({ ok: true, value: { password: "correct horse" } });
+const VALID_TOKEN = "a".repeat(64);
+const INVITATION_ID = "123e4567-e89b-12d3-a456-426614174000";
+
+describe("parseStaffInvitationTokenInput", () => {
+  it("accepts a well-formed token", () => {
+    expect(parseStaffInvitationTokenInput({ token: VALID_TOKEN })).toEqual({
+      ok: true,
+      value: { token: VALID_TOKEN },
+    });
+  });
+
+  it("rejects a malformed or missing token with the uniform message", () => {
+    expect(parseStaffInvitationTokenInput({ token: "short" })).toEqual({
+      ok: false,
+      message: INVITATION_INVALID_MESSAGE,
+    });
+    expect(parseStaffInvitationTokenInput({})).toEqual({
+      ok: false,
+      message: INVITATION_INVALID_MESSAGE,
+    });
+    expect(parseStaffInvitationTokenInput("nope")).toEqual({
+      ok: false,
+      message: INVITATION_INVALID_MESSAGE,
+    });
+  });
+});
+
+describe("parseStaffInvitationAcceptInput", () => {
+  it("accepts a valid token and password", () => {
+    expect(
+      parseStaffInvitationAcceptInput({
+        token: VALID_TOKEN,
+        password: "correct horse",
+      }),
+    ).toEqual({
+      ok: true,
+      value: { token: VALID_TOKEN, password: "correct horse" },
+    });
   });
 
   it("rejects a short password", () => {
-    const result = parseStaffSetPasswordInput({ password: "short" });
-    expect(result).toEqual({
+    expect(
+      parseStaffInvitationAcceptInput({
+        token: VALID_TOKEN,
+        password: "short",
+      }),
+    ).toEqual({
       ok: false,
       message: "Your password must be at least 8 characters.",
     });
   });
 
   it("rejects an over-long password", () => {
-    const result = parseStaffSetPasswordInput({
-      password: "x".repeat(PASSWORD_MAX_LENGTH + 1),
-    });
-    expect(result).toEqual({
+    expect(
+      parseStaffInvitationAcceptInput({
+        token: VALID_TOKEN,
+        password: "x".repeat(PASSWORD_MAX_LENGTH + 1),
+      }),
+    ).toEqual({
       ok: false,
       message: "Your password must be 72 characters or fewer.",
+    });
+  });
+
+  it("rejects a malformed token before checking the password", () => {
+    expect(
+      parseStaffInvitationAcceptInput({
+        token: "bad",
+        password: "correct horse",
+      }),
+    ).toEqual({ ok: false, message: INVITATION_INVALID_MESSAGE });
+  });
+});
+
+describe("parseStaffInvitationRevokeInput", () => {
+  it("accepts a UUID invitation id", () => {
+    expect(
+      parseStaffInvitationRevokeInput({ invitationId: INVITATION_ID }),
+    ).toEqual({
+      ok: true,
+      value: { invitationId: INVITATION_ID },
+    });
+  });
+
+  it("rejects a non-UUID or missing id", () => {
+    expect(
+      parseStaffInvitationRevokeInput({ invitationId: "not-a-uuid" }),
+    ).toEqual({
+      ok: false,
+      message: "Invalid request body.",
+    });
+    expect(parseStaffInvitationRevokeInput({})).toEqual({
+      ok: false,
+      message: "Invalid request body.",
     });
   });
 });

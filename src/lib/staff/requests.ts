@@ -11,6 +11,7 @@ import {
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
 } from "@/lib/portal/requests";
+import { isValidInvitationTokenShape } from "@/lib/staff/invitations";
 
 /** Longest address accepted for a staff invitation or sign-in. */
 export const EMAIL_MAX_LENGTH = 254;
@@ -37,9 +38,25 @@ export interface StaffInviteInput {
   readonly role: StaffRole;
 }
 
-export interface StaffSetPasswordInput {
+export interface StaffInvitationTokenInput {
+  readonly token: string;
+}
+
+export interface StaffInvitationAcceptInput {
+  readonly token: string;
   readonly password: string;
 }
+
+export interface StaffInvitationRevokeInput {
+  readonly invitationId: string;
+}
+
+/**
+ * Uniform message for any unusable invitation link, so an unknown, malformed,
+ * expired, revoked or already-used token cannot be told apart by probing.
+ */
+export const INVITATION_INVALID_MESSAGE =
+  "That invitation link is not valid, has expired, or has already been used. Ask your school administrator for a new one.";
 
 export type ParseResult<T> =
   | { readonly ok: true; readonly value: T }
@@ -131,26 +148,48 @@ export function parseStaffInviteInput(
   return { ok: true, value: { email, role } };
 }
 
-export function parseStaffSetPasswordInput(
+const INVITATION_UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Validates a token-only body (invitation preview/verification). */
+export function parseStaffInvitationTokenInput(
   body: unknown,
-): ParseResult<StaffSetPasswordInput> {
+): ParseResult<StaffInvitationTokenInput> {
   if (!isRecord(body)) {
-    return { ok: false, message: "Choose a password." };
+    return { ok: false, message: INVITATION_INVALID_MESSAGE };
+  }
+
+  const token = readString(body, "token");
+  if (!isValidInvitationTokenShape(token)) {
+    return { ok: false, message: INVITATION_INVALID_MESSAGE };
+  }
+
+  return { ok: true, value: { token } };
+}
+
+/** Validates an acceptance body: the link token plus the chosen password. */
+export function parseStaffInvitationAcceptInput(
+  body: unknown,
+): ParseResult<StaffInvitationAcceptInput> {
+  if (!isRecord(body)) {
+    return { ok: false, message: INVITATION_INVALID_MESSAGE };
+  }
+
+  const token = readString(body, "token");
+  if (!isValidInvitationTokenShape(token)) {
+    return { ok: false, message: INVITATION_INVALID_MESSAGE };
   }
 
   const password = readString(body, "password");
-
   if (password === null) {
     return { ok: false, message: "Choose a password." };
   }
-
   if (password.length < PASSWORD_MIN_LENGTH) {
     return {
       ok: false,
       message: `Your password must be at least ${PASSWORD_MIN_LENGTH} characters.`,
     };
   }
-
   if (password.length > PASSWORD_MAX_LENGTH) {
     return {
       ok: false,
@@ -158,7 +197,23 @@ export function parseStaffSetPasswordInput(
     };
   }
 
-  return { ok: true, value: { password } };
+  return { ok: true, value: { token, password } };
+}
+
+/** Validates a revoke body: the identifier of the live invitation. */
+export function parseStaffInvitationRevokeInput(
+  body: unknown,
+): ParseResult<StaffInvitationRevokeInput> {
+  if (!isRecord(body)) {
+    return { ok: false, message: "Invalid request body." };
+  }
+
+  const raw = readString(body, "invitationId");
+  if (raw === null || !INVITATION_UUID_PATTERN.test(raw.trim())) {
+    return { ok: false, message: "Invalid request body." };
+  }
+
+  return { ok: true, value: { invitationId: raw.trim() } };
 }
 
 /** Uniform message for any failed staff sign-in. */

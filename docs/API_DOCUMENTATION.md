@@ -284,7 +284,7 @@ Document actual implemented behavior. Do not describe planned endpoints as opera
 - **Response schema (200):** `{ "ok": true, "role": "school_administrator" | "teacher" }`.
 - **Validation rules:** email/password required; password length ≤ 72. Malformed input → `400`.
 - **Error behaviour (uniform, no account enumeration):** wrong password or unknown email → `401` with one shared message; a valid account with no staff membership → `403` `not a school staff member`; a `revoked`/suspended membership → `403` `school access is not active`; multi-school membership (anomalous under D-017) fails closed to `500`; rate limit → `429`.
-- **First-sign-in activation:** an `invited` membership flips to `active` on the first **confirmed** sign-in (`activation` requires the invitation email link, because Supabase refuses password sign-in for unconfirmed emails) and writes a `staff_membership_activated` audit event attributed to the user.
+- **First-sign-in activation (fallback, D-025):** an `invited` membership flips to `active` on the first **confirmed** sign-in and writes a `staff_membership_activated` audit event attributed to the user. The normal path is acceptance at `/join` (see 14.9), which activates the membership directly; this fallback covers an interrupted acceptance. Supabase refuses password sign-in for unconfirmed emails, so a pending invitation cannot sign in before acceptance.
 - **Rate limits:** sliding window keyed by client address + email (identity-hashed, never logged).
 - **Database tables:** `school_members` (read/update), `audit_events` (insert); Auth sign-in.
 - **Tests:** `tests/live/09-staff-auth.mjs`, unit tests for `parseStaffSignInInput` and `classifySignIn`.
@@ -303,25 +303,48 @@ Document actual implemented behavior. Do not describe planned endpoints as opera
 - **Database tables:** `school_members` (read, RLS-scoped).
 - **Tests:** `tests/live/09-staff-auth.mjs`.
 
-### 14.7 `POST /api/staff/invite` — invite a staff member by email (implemented 2026-10-12)
+### 14.7 `POST /api/staff/invite` — invite a staff member with a shareable link (implemented 2026-10-15; D-025)
 
-- **Purpose:** an authorized school administrator invites a staff member (D-018, D-024). The invite is scoped to the **caller's own school** — no school identifier is accepted from the request, so an invite can never be aimed at another school.
+- **Purpose:** an authorized school administrator invites a staff member (D-018, D-024, D-025) and receives a shareable activation link. The invite is scoped to the **caller's own school** — no school identifier is accepted from the request, so an invite can never be aimed at another school. **No email is sent.**
 - **Authentication:** Supabase session required. No session → `401`.
 - **Required permission:** `member.manage` in the caller's own school, checked via `has_school_permission` RPC. No active/unique membership or missing permission → `403`.
 - **Request schema:** `{ "email": string, "role": "school_administrator" | "teacher", "schoolId"?: string }` — `schoolId` is ignored entirely if supplied.
-- **Response schema (201):** `{ "ok": true, "role": string }`. Duplicate email (already an Auth account or already a member of the school) → `409`; a non-staff role → `400`.
-- **Side effects:** creates the auth user **unconfirmed** with the `provisioned_by = 'school-platform'` marker (two-step: `createUser`, then the built-in single-use invite email on the existing user — GoTrue's invite endpoint ignores `app_metadata`, so a one-step invite would fail the sign-up guard hook; D-024). Inserts the `school_members` row with status `invited` through the caller's authenticated session so RLS re-checks the permission and the audit trigger records the actor.
-- **Database tables:** Auth `users`, `school_members` (insert), `audit_events` (insert, via trigger).
-- **Tests:** `tests/live/09-staff-auth.mjs` (401/400/403/201/409 paths, ignored `schoolId`).
+- **Response schema (201):** `{ "ok": true, "invitationId": string, "email": string, "role": string, "expiresAt": string, "activationLink": string }`, where `activationLink` is `<origin>/join#token=<64-hex>`. The token is returned exactly once and never logged. Duplicate email (an existing Auth account without an unaccepted invitation, or already a member of the school) → `409`; a non-staff role → `400`.
+- **Side effects:** creates the auth user **unconfirmed** with no password and the `provisioned_by = 'school-platform'` marker (`school-accounts.createPendingStaffUser`; the sign-up guard hook requires that marker in the spoof-proof `app_metadata`). Inserts the `school_members` row with status `invited` through the caller's authenticated session, so RLS re-checks the permission and the audit trigger records the actor. Inserts a `staff_invitations` row (server-only store; only a keyed hash of the token) and appends a `staff_invitation_created` audit event.
+- **Re-invitation:** if an unaccepted invitation already exists for `(school, email)`, the previous link is revoked and a new one issued, and the pending membership's role may be corrected. The old link stops working immediately.
+- **Database tables:** Auth `users`, `school_members` (insert), `staff_invitations` (insert/update, server key), `audit_events` (insert).
+- **Tests:** `tests/live/09-staff-auth.mjs` (401/400/403/201/409 paths, ignored `schoolId`, re-invite replacement).
 
-### 14.8 `POST /api/staff/set-password` — set password during invitation acceptance (implemented 2026-10-12)
+### 14.8 `POST /api/staff/invitations/preview` — verify a shareable invitation link (implemented 2026-10-15; D-025)
 
-- **Purpose:** applies the password chosen by the invited staff member at `/join`, reached after the invitation email's single-use link was exchanged at `/auth/confirm` (which confirms the email and establishes a session). Supabase hashes and stores the password; the platform never sees or stores it. The temporary session is then ended; the user signs in normally, which activates the membership.
-- **Authentication:** Supabase session required (only the session-holding invited user may set their password). No session → `401`.
-- **Request schema:** `{ "password": string }` (min 8 / max 72 characters, interim policy).
-- **Response schema (200):** `{ "ok": true }`. Weak/incorrect input → `400`.
-- **Database tables:** Auth `users` (password update).
-- **Tests:** `tests/live/09-staff-auth.mjs` (401/anonymous, 200 + session end, old password → 401, new password → 200).
+- **Purpose:** verifies an activation link **without consuming it**, so the acceptance page can show the recipient, role, school and expiry before a password is chosen.
+- **Authentication:** none (public); possession of the link is the credential. Rate-limited (`invitationLimiter`); exceeding it → `429`.
+- **Request schema:** `{ "token": string }` (64 lower-case hex, sent in the body — never in the URL).
+- **Response schema (200):** `{ "ok": true, "email": string, "role": string, "expiresAt": string, "schoolName": string | null }`.
+- **Error behaviour (uniform):** a malformed token → `400`; an unknown, expired, revoked or already-used token → `404`, all with the same message, so a link cannot be probed.
+- **Database tables:** `staff_invitations` (read, server key), `schools` (read).
+- **Tests:** `tests/live/09-staff-auth.mjs`.
+
+### 14.9 `POST /api/staff/invitations/accept` — accept a shareable invitation link (implemented 2026-10-15; D-025)
+
+- **Purpose:** completes invitation acceptance. Claims the single-use credential atomically, sets the recipient's password and confirms the email through the admin API, and activates the membership. The school, recipient and role come from the stored invitation, never from the request, so acceptance cannot be redirected.
+- **Authentication:** none (public); the single-use link is the credential. Rate-limited (`invitationLimiter`); exceeding it → `429`.
+- **Request schema:** `{ "token": string, "password": string }` (password min 8 / max 72 characters, interim policy; sent in the body).
+- **Response schema (200):** `{ "ok": true, "message": string }`.
+- **Error behaviour:** a password that fails the interim policy → `400`; an unknown, expired, revoked or already-used link → `404` (uniform); a rare password-application failure → `500`.
+- **Concurrency and single use:** the credential is claimed with a single conditional `UPDATE … RETURNING`, so two concurrent submissions cannot both succeed; on a password failure the claim is released so the same link can be retried. If only membership activation fails, the claim stays consumed and the first confirmed sign-in activates the membership (14.4 fallback).
+- **Database tables:** `staff_invitations` (update/claim, server key), `school_members` (update), Auth `users` (password + `email_confirm`), `audit_events` (insert: `staff_invitation_accepted`).
+- **Tests:** `tests/live/09-staff-auth.mjs` (400/404/200, single-use replay, confirmed email, activation).
+
+### 14.10 `POST /api/staff/invitations/revoke` — revoke a live invitation (implemented 2026-10-15; D-025)
+
+- **Purpose:** revokes a live (unaccepted, unrevoked) invitation so its shared link stops working immediately. Non-destructive: the pending account and `invited` membership remain dormant and unusable.
+- **Authentication:** Supabase session required. No session → `401`.
+- **Required permission:** `member.manage` in the caller's own school, checked via `has_school_permission` RPC; the school is resolved from the caller's own active membership. Missing permission → `403`. Revoking an invitation that is not a live invitation of the caller's school → `404`, so a caller cannot revoke another school's invitation.
+- **Request schema:** `{ "invitationId": uuid }`; a malformed id → `400`.
+- **Response schema (200):** `{ "ok": true }`.
+- **Database tables:** `school_members` (read, RLS-scoped, to resolve the caller's school), `staff_invitations` (update, server key), `audit_events` (insert: `staff_invitation_revoked`).
+- **Tests:** `tests/live/09-staff-auth.mjs` (401/400/403/200/404, revoked link unusable, cross-school denial).
 
 ## 15. Implementation Gate
 

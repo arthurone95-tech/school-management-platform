@@ -89,12 +89,12 @@ describe("schema structure", () => {
         and relname in (
           'schools', 'school_members', 'role_permissions', 'classes',
           'learners', 'learner_class_placements',
-          'learner_portal_credentials', 'audit_events'
+          'learner_portal_credentials', 'staff_invitations', 'audit_events'
         )
       order by relname
     `);
 
-    expect(result.rows).toHaveLength(8);
+    expect(result.rows).toHaveLength(9);
     expect(result.rows.every((row) => row.relrowsecurity)).toBe(true);
   });
 
@@ -102,6 +102,14 @@ describe("schema structure", () => {
     const result = await db.query<{ count: number }>(`
       select count(*)::int as count from pg_policies
       where schemaname = 'public' and tablename = 'learner_portal_credentials'
+    `);
+    expect(result.rows[0]?.count).toBe(0);
+  });
+
+  it("defines no client policy for the staff invitation table", async () => {
+    const result = await db.query<{ count: number }>(`
+      select count(*)::int as count from pg_policies
+      where schemaname = 'public' and tablename = 'staff_invitations'
     `);
     expect(result.rows[0]?.count).toBe(0);
   });
@@ -407,5 +415,93 @@ describe("membership status", () => {
       `update public.school_members set status = 'active'
         where user_id = '${STAFF_A}'`,
     );
+  });
+});
+
+describe("staff invitation credentials are server-only", () => {
+  async function membershipId(): Promise<string> {
+    await actAsSystem(db);
+    const result = await db.query<{ id: string }>(
+      `select id from public.school_members
+        where user_id = '${STAFF_A}' and school_id = '${SCHOOL_A}'`,
+    );
+    return result.rows[0]!.id;
+  }
+
+  it("denies authenticated reads, like the student credential store", async () => {
+    await actAsUser(db, ADMIN_A);
+    await expect(
+      db.query(`select id from public.staff_invitations`),
+    ).rejects.toThrow(/permission denied/i);
+  });
+
+  it("is writable and readable through the server-only role", async () => {
+    const membership = await membershipId();
+    await actAsServiceRole(db);
+    await db.query(
+      `insert into public.staff_invitations (
+         school_id, membership_id, user_id, email, role, credential_hash, expires_at
+       ) values (
+         '${SCHOOL_A}', '${membership}', '${STAFF_A}', 'invited@example.com',
+         'teacher', repeat('cd', 32), now() + interval '72 hours'
+       )`,
+    );
+    const result = await db.query(
+      `select id from public.staff_invitations where credential_hash = repeat('cd', 32)`,
+    );
+    expect(result.rows).toHaveLength(1);
+  });
+
+  it("rejects a credential hash that is not 64 lower-case hex", async () => {
+    const membership = await membershipId();
+    await actAsServiceRole(db);
+    await expect(
+      db.query(
+        `insert into public.staff_invitations (
+           school_id, membership_id, user_id, email, role, credential_hash, expires_at
+         ) values (
+           '${SCHOOL_A}', '${membership}', '${STAFF_A}', 'bad@example.com',
+           'teacher', 'not-a-valid-hash', now() + interval '72 hours'
+         )`,
+      ),
+    ).rejects.toThrow(/check constraint|violates/i);
+  });
+
+  it("keeps at most one live invitation per membership", async () => {
+    const membership = await membershipId();
+
+    // The previous test left one live invitation; a second must be refused.
+    await actAsServiceRole(db);
+    await expect(
+      db.query(
+        `insert into public.staff_invitations (
+           school_id, membership_id, user_id, email, role, credential_hash, expires_at
+         ) values (
+           '${SCHOOL_A}', '${membership}', '${STAFF_A}', 'second@example.com',
+           'teacher', repeat('ef', 32), now() + interval '72 hours'
+         )`,
+      ),
+    ).rejects.toThrow(/duplicate key value/i);
+
+    // Revoking frees the slot, so a replacement can be issued.
+    await db.query(
+      `update public.staff_invitations set revoked_at = now()
+        where membership_id = '${membership}' and revoked_at is null`,
+    );
+    await db.query(
+      `insert into public.staff_invitations (
+         school_id, membership_id, user_id, email, role, credential_hash, expires_at
+       ) values (
+         '${SCHOOL_A}', '${membership}', '${STAFF_A}', 'replacement@example.com',
+         'teacher', repeat('12', 32), now() + interval '72 hours'
+       )`,
+    );
+
+    const live = await db.query(
+      `select id from public.staff_invitations
+        where membership_id = '${membership}'
+          and accepted_at is null and revoked_at is null`,
+    );
+    expect(live.rows).toHaveLength(1);
   });
 });

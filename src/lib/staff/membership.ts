@@ -29,10 +29,12 @@ export type SignInOutcome =
  *
  * - `not-staff`: no school-scoped staff role (for example a student account).
  * - `active`: an active staff membership — sign in normally.
- * - `invited`: an invited staff membership with nothing else — the first
- *   successful (confirmed) sign-in activates it (D-024). The invite email's
- *   confirmation link must be followed first, because Supabase refuses
- *   password sign-in for unconfirmed emails.
+ * - `invited`: an invited staff membership with nothing else. Under D-025 the
+ *   invitation is completed by opening the shareable link at `/join`, which
+ *   sets the password and confirms the email before activating the membership;
+ *   if that activation step is interrupted, the first successful confirmed
+ *   sign-in activates an invited membership as a fallback. Supabase refuses
+ *   password sign-in for unconfirmed emails either way.
  * - `denied`: suspended/revoked membership, a non-staff role, or an anomalous
  *   multiple-membership state (D-017 excludes multi-school membership in the
  *   first release). Fails closed rather than guessing.

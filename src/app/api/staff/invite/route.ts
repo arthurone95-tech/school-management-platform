@@ -1,9 +1,15 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { parseStaffInviteInput } from "@/lib/staff/requests";
-import { inviteStaffUser } from "@/lib/server/staff-accounts";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { createPendingStaffUser } from "@/lib/server/staff-accounts";
+import {
+  findUnacceptedStaffInvitation,
+  issueStaffInvitation,
+  revokeLiveInvitations,
+} from "@/lib/server/staff-invitations";
+import { buildStaffInvitationLink } from "@/lib/staff/invitations";
 
 /**
  * Staff invitation (D-018 requires enrolment roles to be invited; D-021 sets
@@ -12,12 +18,18 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
  * An authorized school administrator invites a staff member by email. The
  * invitation is scoped to the caller's OWN school — no school identifier is
  * accepted from the request, so an invite can never be aimed at another
- * school. The server creates the auth user and sends Supabase's built-in
- * single-use invitation email; the membership row is created with status
- * 'invited' through the caller's authenticated session so Route Level
- * Security re-checks the `member.manage` permission and the audit trigger
- * records the actor. The invited user accepts via the email link, chooses a
- * password (/join), and activates the membership on first sign-in.
+ * school. The server creates the auth user (no password, unconfirmed email)
+ * and a `school_members` row with status 'invited' through the caller's
+ * authenticated session, so Route Level Security re-checks the
+ * `member.manage` permission and the audit trigger records the actor.
+ *
+ * No email is sent (D-025): the response carries a shareable activation link
+ * that the administrator passes to the recipient out of band. The link holds a
+ * single-use, expiring credential in its URL fragment; the recipient accepts
+ * it at /join, which sets their password and activates the membership.
+ *
+ * Re-inviting an email that already has an unaccepted invitation (for example
+ * to correct the role) revokes the previous link and issues a new one.
  */
 
 function json(body: unknown, status = 200): NextResponse {
@@ -88,27 +100,102 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const admin = createSupabaseAdminClient();
-  const redirectTo = `${new URL(request.url).origin}/auth/confirm`;
-  const invite = await inviteStaffUser(admin, parsed.value.email, redirectTo);
+  const origin = new URL(request.url).origin;
+  const email = parsed.value.email;
+  const requestedRole = parsed.value.role;
 
-  if (!invite.ok && invite.reason === "user_exists") {
-    return json({ ok: false, error: invite.message }, 409);
-  }
-  if (!invite.ok) {
-    return json({ ok: false, error: invite.message }, 500);
-  }
-
-  // Insert the membership row through the caller's authenticated session so
-  // RLS re-checks the permission and the audit trigger records the actor.
-  const { error: insertError } = await supabase.from("school_members").insert({
-    school_id: schoolId,
-    user_id: invite.userId,
-    role: parsed.value.role,
-    status: "invited",
+  const pending = await findUnacceptedStaffInvitation(admin, {
+    schoolId,
+    email,
   });
 
-  if (insertError) {
-    if (insertError.code === "23505") {
+  if (pending) {
+    const { data: updated, error: updateError } = await supabase
+      .from("school_members")
+      .update({ role: requestedRole })
+      .eq("id", pending.membershipId)
+      .eq("school_id", schoolId)
+      .eq("status", "invited")
+      .select("id")
+      .maybeSingle<{ id: string }>();
+
+    if (updateError) {
+      return json(
+        { ok: false, error: "The invitation could not be updated." },
+        500,
+      );
+    }
+    if (!updated) {
+      return json(
+        {
+          ok: false,
+          error: "That person already has a membership in this school.",
+        },
+        409,
+      );
+    }
+
+    await revokeLiveInvitations(admin, pending.membershipId);
+    const issued = await issueStaffInvitation(admin, {
+      schoolId,
+      membershipId: pending.membershipId,
+      userId: pending.userId,
+      email,
+      role: requestedRole,
+      invitedBy: userData.user.id,
+    });
+    if (!issued) {
+      return json(
+        { ok: false, error: "The invitation could not be created." },
+        500,
+      );
+    }
+
+    return json(
+      {
+        ok: true,
+        invitationId: issued.invitationId,
+        email,
+        role: requestedRole,
+        expiresAt: issued.expiresAt.toISOString(),
+        activationLink: buildStaffInvitationLink(origin, issued.token),
+      },
+      201,
+    );
+  }
+
+  const created = await createPendingStaffUser(admin, email);
+  if (!created.ok) {
+    if (created.reason === "user_exists") {
+      return json(
+        {
+          ok: false,
+          error:
+            "That email already has an account. Use the existing invitation.",
+        },
+        409,
+      );
+    }
+    return json(
+      { ok: false, error: "The invitation could not be created." },
+      500,
+    );
+  }
+
+  const { data: inserted, error: insertError } = await supabase
+    .from("school_members")
+    .insert({
+      school_id: schoolId,
+      user_id: created.userId,
+      role: requestedRole,
+      status: "invited",
+    })
+    .select("id")
+    .single<{ id: string }>();
+
+  if (insertError || !inserted) {
+    await admin.auth.admin.deleteUser(created.userId).catch(() => undefined);
+    if (insertError?.code === "23505") {
       return json(
         {
           ok: false,
@@ -118,10 +205,37 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
     return json(
-      { ok: false, error: "The invitation could not be recorded." },
+      { ok: false, error: "The invitation could not be created." },
       500,
     );
   }
 
-  return json({ ok: true, role: parsed.value.role }, 201);
+  const issued = await issueStaffInvitation(admin, {
+    schoolId,
+    membershipId: inserted.id,
+    userId: created.userId,
+    email,
+    role: requestedRole,
+    invitedBy: userData.user.id,
+  });
+  if (!issued) {
+    await supabase.from("school_members").delete().eq("id", inserted.id);
+    await admin.auth.admin.deleteUser(created.userId).catch(() => undefined);
+    return json(
+      { ok: false, error: "The invitation could not be created." },
+      500,
+    );
+  }
+
+  return json(
+    {
+      ok: true,
+      invitationId: issued.invitationId,
+      email,
+      role: requestedRole,
+      expiresAt: issued.expiresAt.toISOString(),
+      activationLink: buildStaffInvitationLink(origin, issued.token),
+    },
+    201,
+  );
 }

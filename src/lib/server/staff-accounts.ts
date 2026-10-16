@@ -22,7 +22,7 @@ function getErrorCode(error: unknown): string {
   return maybe?.code ?? maybe?.message ?? "";
 }
 
-export type InviteUserResult =
+export type CreatePendingStaffUserResult =
   | { readonly ok: true; readonly userId: string }
   | {
       readonly ok: false;
@@ -32,57 +32,37 @@ export type InviteUserResult =
     };
 
 /**
- * Creates the staff auth user and sends Supabase's built-in invitation email
- * (single-use, expiring confirmation token). The invited user follows the link
- * to `/auth/confirm`, chooses a password at `/join` (D-024), and is then able
- * to sign in; the first sign-in activates their `school_members` row.
+ * Creates the unconfirmed staff auth account that an invitation will activate
+ * (D-025).
  *
- * The invitation is sent in two steps because GoTrue's `/invite` endpoint
- * ignores `app_metadata`, so a directly invited user would never carry the
- * `provisioned_by` marker the sign-up guard hook requires:
+ * No email is sent: the account is created with `email_confirm: false` and no
+ * password, so it cannot sign in until the invited person accepts the shareable
+ * link and chooses their own password. The `provisioned_by` marker lives in
+ * `app_metadata` (never client-settable) so the sign-up guard hook permits this
+ * one server-side creation path and no other.
  *
- * 1. `createUser` creates an unconfirmed account carrying the marker (the same
- *    path the seed uses, so the hook permits it).
- * 2. `inviteUserByEmail` on the now-existing user triggers GoTrue's official
- *    invitation email. The hook only fires on the create path, so the invite is
- *    not blocked, and the single-use confirmation token is still issued.
- *
- * This keeps the guard hook's rule — only the platform server (this code) can
- * create accounts — intact without moving the marker to client-spoofable
- * `user_metadata`.
+ * A single `createUser` call is enough because nothing here needs GoTrue's
+ * `/invite` endpoint: removing email delivery also removes the two-step dance
+ * that endpoint's `app_metadata` being ignored previously forced.
  */
-export async function inviteStaffUser(
+export async function createPendingStaffUser(
   admin: AdminClient,
   email: string,
-  redirectTo: string,
-): Promise<InviteUserResult> {
+): Promise<CreatePendingStaffUserResult> {
   const { data, error } = await admin.auth.admin.createUser({
     email,
     email_confirm: false,
     app_metadata: { provisioned_by: "school-platform" },
   });
 
-  if (error) {
+  if (error || !data.user) {
+    const exists = isUserExistsError(error);
     return {
       ok: false,
-      reason: isUserExistsError(error) ? "user_exists" : "other",
-      message: isUserExistsError(error)
+      reason: exists ? "user_exists" : "other",
+      message: exists
         ? "That email already has an account."
-        : "The invitation could not be sent.",
-    };
-  }
-
-  const { error: inviteError } = await admin.auth.admin.inviteUserByEmail(
-    email,
-    { redirectTo },
-  );
-  if (inviteError) {
-    // Roll back the placeholder account so a later attempt starts clean.
-    await admin.auth.admin.deleteUser(data.user.id).catch(() => undefined);
-    return {
-      ok: false,
-      reason: "other",
-      message: "The invitation could not be sent.",
+        : "The invitation could not be created.",
     };
   }
 
@@ -132,7 +112,8 @@ export async function findMembershipsForUser(
 }
 
 /**
- * Activates an invited membership after the first confirmed staff sign-in.
+ * Activates an invited membership. Called when an invitation is accepted
+ * (D-025) and, as a safety net, on the first confirmed staff sign-in.
  *
  * The status change is recorded by the `school_members` audit trigger
  * (changed columns only); this call additionally appends an explicit,

@@ -1,15 +1,14 @@
-// Live check 09: the staff authentication and invitation foundation.
+// Live check 09: the staff authentication and shareable-invitation foundation.
 //
-// Covers: staff sign-in and identity (email + password, D-021/D-024), invited
-// membership activation on first confirmed sign-in, invitation authorization
-// and school scoping (never accepts a school id from the request), revocation
-// denial, and the password-set step of invitation acceptance.
+// Covers: staff sign-in and identity (email + password, D-021/D-024); invited
+// membership activation on first confirmed sign-in (fallback path); invitation
+// authorization and school scoping (never accepts a school id from the request);
+// and the D-025 shareable-link flow — issue (no email), preview, single-use
+// acceptance, revocation, replacement and cross-school denial.
 //
-// The literal email delivery is a manual/browser step (see 10.4). The app-side
-// acceptance chain that the emailed link drives — /auth/confirm exchanging a
-// single-use token_hash for a session, then /join — IS exercised here using
-// admin.generateLink, which returns the same hashed token the email carries, so
-// no real mailbox is needed.
+// No mailbox and no email send are involved: the invitation response carries the
+// activation link directly, and the single-use credential lives in the URL
+// fragment, so the whole app-side chain is exercised here.
 import { adminClient, appBaseUrl, loadState, createReporter } from "./lib.mjs";
 
 const base = appBaseUrl();
@@ -118,38 +117,18 @@ function randomEmail(prefix) {
   return `${prefix}.${crypto.randomUUID().slice(0, 8)}@example.com`;
 }
 
-/**
- * Addresses for email-SENDING invitations. Supabase's built-in mailer validates
- * the recipient domain at send time and rejects `@example.com` (no MX/DNS), so
- * a DNS-valid domain is required even when the mailbox does not exist. The
- * local part is random, so the send bounces silently instead of hitting a real
- * mailbox; each full suite run consumes one send from the Free-plan pooler
- * budget (2 per hour, dev-only caveat in docs/PHASE0_RISK_REGISTER.md 10.4).
- */
-function randomLiveEmail(prefix) {
-  return `${prefix}.${crypto.randomUUID().slice(0, 12)}@gmail.com`;
+/** Extracts the 256-bit token from a shareable activation link's fragment. */
+function tokenFromLink(link) {
+  const hash = new URL(link).hash;
+  return hash.replace(/^#token=/, "");
 }
 
-/** Creates a confirmed auth user (mirrors "invitation accepted" state). */
+/** Creates a confirmed auth user (mirrors an already-accepted account). */
 async function createConfirmedUser(email, password) {
   const { data, error } = await admin.auth.admin.createUser({
     email,
     password,
     email_confirm: true,
-    app_metadata: { provisioned_by: "school-platform" },
-  });
-  if (error || !data.user) throw error ?? new Error("user creation failed");
-  return data.user;
-}
-
-/**
- * Creates an unconfirmed auth user carrying the provisioning marker — the
- * state `inviteStaffUser` step 1 leaves behind, before the invitation email.
- */
-async function createPendingUser(email) {
-  const { data, error } = await admin.auth.admin.createUser({
-    email,
-    email_confirm: false,
     app_metadata: { provisioned_by: "school-platform" },
   });
   if (error || !data.user) throw error ?? new Error("user creation failed");
@@ -162,10 +141,8 @@ async function main() {
   }
 
   const createdUsers = [];
-  const createdMemberships = [];
-  const track = (user, membershipId) => {
-    createdUsers.push(user);
-    if (membershipId) createdMemberships.push(membershipId);
+  const track = (user) => {
+    if (user) createdUsers.push(user);
   };
 
   try {
@@ -247,7 +224,7 @@ async function main() {
       `got ${plainMe.status}`,
     );
 
-    // --- invited membership activates on the first confirmed sign-in
+    // --- invited membership activates on the first confirmed sign-in (fallback)
     const invitee = await createConfirmedUser(
       randomEmail("activate"),
       "ActivatePassword123!",
@@ -263,7 +240,7 @@ async function main() {
       .select("id")
       .single();
     if (inviteeMember.error) throw inviteeMember.error;
-    track(invitee, inviteeMember.data.id);
+    track(invitee);
 
     const inviteeJar = createCookieJar();
     const inviteeSignIn = await postJson(
@@ -335,31 +312,29 @@ async function main() {
     );
 
     // The client includes another school's id; it must be ignored entirely.
-    // This is the suite's single email-SENDING invitation; the address uses a
-    // DNS-valid domain because the built-in mailer rejects @example.com.
-    const invitedEmail = randomLiveEmail("invite.teacher");
+    const invitedEmail = randomEmail("invite.teacher");
     const invite = await postJson(
       "/api/staff/invite",
       { email: invitedEmail, role: "teacher", schoolId: state.schools.B },
       adminJar.header(),
     );
     report.check(
-      invite.status === 201 && invite.payload?.ok === true,
-      "a school administrator may invite a teacher into their school (201)",
+      invite.status === 201 &&
+        invite.payload?.ok === true &&
+        typeof invite.payload?.activationLink === "string",
+      "a school administrator may invite a teacher and receives a shareable link (201)",
       `got ${invite.status}`,
     );
 
     const invitedUser = await findUserByEmail(invitedEmail);
     report.check(
       invitedUser !== null && !invitedUser.email_confirmed_at,
-      "the invited user exists and is unconfirmed (email invitation pending)",
+      "the invited user exists and is unconfirmed (no email was sent)",
       invitedUser
         ? `confirmed=${invitedUser.email_confirmed_at ?? "no"}`
         : "not found",
     );
-    if (invitedUser) {
-      track(invitedUser);
-    }
+    track(invitedUser);
 
     const invitedMembership = invitedUser
       ? await admin
@@ -413,6 +388,282 @@ async function main() {
       `got ${teacherInvite.status}`,
     );
 
+    // --- shareable link: preview, single-use acceptance ---------------------
+    const inviteToken = tokenFromLink(invite.payload.activationLink);
+    report.check(
+      /^[0-9a-f]{64}$/.test(inviteToken),
+      "the invitation response carries a 256-bit token in the link's fragment",
+      `link=${String(invite.payload.activationLink).split("#")[0]}#token=…`,
+    );
+
+    const previewMalformed = await postJson(
+      "/api/staff/invitations/preview",
+      { token: "not-a-token" },
+      null,
+    );
+    report.check(
+      previewMalformed.status === 400,
+      "preview rejects a malformed token (400)",
+      `got ${previewMalformed.status}`,
+    );
+
+    const previewUnknown = await postJson(
+      "/api/staff/invitations/preview",
+      { token: "a".repeat(64) },
+      null,
+    );
+    report.check(
+      previewUnknown.status === 404,
+      "preview rejects an unknown token uniformly (404)",
+      `got ${previewUnknown.status}`,
+    );
+
+    const preview = await postJson(
+      "/api/staff/invitations/preview",
+      { token: inviteToken },
+      null,
+    );
+    report.check(
+      preview.status === 200 &&
+        preview.payload?.ok === true &&
+        preview.payload?.email === invitedEmail &&
+        preview.payload?.role === "teacher" &&
+        typeof preview.payload?.schoolName === "string",
+      "preview describes the invitation (recipient, role, school)",
+      `status=${preview.status} role=${preview.payload?.role} school=${preview.payload?.schoolName}`,
+    );
+
+    const acceptShort = await postJson(
+      "/api/staff/invitations/accept",
+      { token: inviteToken, password: "short" },
+      null,
+    );
+    report.check(
+      acceptShort.status === 400,
+      "accept rejects a password below the minimum length (400)",
+      `got ${acceptShort.status}`,
+    );
+
+    const accept = await postJson(
+      "/api/staff/invitations/accept",
+      { token: inviteToken, password: "ChosenPassword123!" },
+      null,
+    );
+    report.check(
+      accept.status === 200 && accept.payload?.ok === true,
+      "accepting the link sets the password and activates the account",
+      `got ${accept.status}`,
+    );
+
+    const acceptReplay = await postJson(
+      "/api/staff/invitations/accept",
+      { token: inviteToken, password: "ChosenPassword123!" },
+      null,
+    );
+    report.check(
+      acceptReplay.status === 404,
+      "the link is single-use: a replay is refused (404)",
+      `got ${acceptReplay.status}`,
+    );
+
+    const previewAfterAccept = await postJson(
+      "/api/staff/invitations/preview",
+      { token: inviteToken },
+      null,
+    );
+    report.check(
+      previewAfterAccept.status === 404,
+      "a used link no longer resolves (404)",
+      `got ${previewAfterAccept.status}`,
+    );
+
+    const acceptedUser = await findUserByEmail(invitedEmail);
+    report.check(
+      acceptedUser !== null && Boolean(acceptedUser.email_confirmed_at),
+      "accepting the link confirms the email so password sign-in works",
+      acceptedUser
+        ? `confirmed=${acceptedUser.email_confirmed_at ?? "no"}`
+        : "not found",
+    );
+
+    if (invitedMembership.data) {
+      const memberAfterAccept = await admin
+        .from("school_members")
+        .select("status")
+        .eq("id", invitedMembership.data.id)
+        .single();
+      report.check(
+        memberAfterAccept.data?.status === "active",
+        "the membership is active after acceptance",
+        `status=${memberAfterAccept.data?.status}`,
+      );
+    }
+
+    const acceptedAudit = await admin
+      .from("audit_events")
+      .select("action")
+      .eq("target_table", "staff_invitations")
+      .eq("action", "staff_invitation_accepted");
+    report.check(
+      (acceptedAudit.data ?? []).length >= 1,
+      "acceptance is recorded in the audit trail",
+      `events=${acceptedAudit.data?.length}`,
+    );
+
+    const acceptedSignIn = await postJson(
+      "/api/staff/sign-in",
+      { email: invitedEmail, password: "ChosenPassword123!" },
+      null,
+    );
+    report.check(
+      acceptedSignIn.status === 200 &&
+        acceptedSignIn.payload?.role === "teacher",
+      "the invited person signs in with the password they chose",
+      `got ${acceptedSignIn.status} role=${acceptedSignIn.payload?.role}`,
+    );
+
+    // --- revocation --------------------------------------------------------
+    const revokeEmail = randomEmail("revoke.target");
+    const revokeInvite = await postJson(
+      "/api/staff/invite",
+      { email: revokeEmail, role: "teacher" },
+      adminJar.header(),
+    );
+    report.check(
+      revokeInvite.status === 201 && revokeInvite.payload?.ok === true,
+      "a second invitation is issued for the revoke scenario (201)",
+      `got ${revokeInvite.status}`,
+    );
+    const revokeToken = tokenFromLink(revokeInvite.payload.activationLink);
+    const revokeId = revokeInvite.payload.invitationId;
+    track(await findUserByEmail(revokeEmail));
+
+    const revokeAnon = await postJson(
+      "/api/staff/invitations/revoke",
+      { invitationId: revokeId },
+      null,
+    );
+    report.check(
+      revokeAnon.status === 401,
+      "revoking without a session is rejected (401)",
+      `got ${revokeAnon.status}`,
+    );
+
+    const revokeTeacher = await postJson(
+      "/api/staff/invitations/revoke",
+      { invitationId: revokeId },
+      inviteeJar.header(),
+    );
+    report.check(
+      revokeTeacher.status === 403,
+      "a teacher cannot revoke (no member.manage permission) (403)",
+      `got ${revokeTeacher.status}`,
+    );
+
+    const revokeBadId = await postJson(
+      "/api/staff/invitations/revoke",
+      { invitationId: "not-a-uuid" },
+      adminJar.header(),
+    );
+    report.check(
+      revokeBadId.status === 400,
+      "revoke rejects a malformed invitation id (400)",
+      `got ${revokeBadId.status}`,
+    );
+
+    const revoke = await postJson(
+      "/api/staff/invitations/revoke",
+      { invitationId: revokeId },
+      adminJar.header(),
+    );
+    report.check(
+      revoke.status === 200 && revoke.payload?.ok === true,
+      "the administrator revokes the live invitation (200)",
+      `got ${revoke.status}`,
+    );
+
+    const previewRevoked = await postJson(
+      "/api/staff/invitations/preview",
+      { token: revokeToken },
+      null,
+    );
+    report.check(
+      previewRevoked.status === 404,
+      "a revoked link no longer resolves (404)",
+      `got ${previewRevoked.status}`,
+    );
+
+    const acceptRevoked = await postJson(
+      "/api/staff/invitations/accept",
+      { token: revokeToken, password: "WhateverPassword123!" },
+      null,
+    );
+    report.check(
+      acceptRevoked.status === 404,
+      "a revoked link cannot be accepted (404)",
+      `got ${acceptRevoked.status}`,
+    );
+
+    // --- re-invite replaces the previous link and can correct the role ------
+    const reInvite = await postJson(
+      "/api/staff/invite",
+      { email: revokeEmail, role: "school_administrator" },
+      adminJar.header(),
+    );
+    const reToken =
+      reInvite.status === 201
+        ? tokenFromLink(reInvite.payload.activationLink)
+        : "";
+    report.check(
+      reInvite.status === 201 &&
+        reInvite.payload?.role === "school_administrator" &&
+        reToken !== revokeToken,
+      "re-inviting an unaccepted email issues a fresh link and can correct the role",
+      `status=${reInvite.status} role=${reInvite.payload?.role}`,
+    );
+
+    const oldPreviewAfterReinvite = await postJson(
+      "/api/staff/invitations/preview",
+      { token: revokeToken },
+      null,
+    );
+    report.check(
+      oldPreviewAfterReinvite.status === 404,
+      "the replaced link stays invalid (404)",
+      `got ${oldPreviewAfterReinvite.status}`,
+    );
+
+    const newPreview = await postJson(
+      "/api/staff/invitations/preview",
+      { token: reToken },
+      null,
+    );
+    report.check(
+      newPreview.status === 200 &&
+        newPreview.payload?.role === "school_administrator",
+      "the replacement link resolves with the corrected role",
+      `status=${newPreview.status} role=${newPreview.payload?.role}`,
+    );
+
+    // --- cross-school revocation is denied ---------------------------------
+    const adminBJar = createCookieJar();
+    const adminBSignIn = await postJson(
+      "/api/staff/sign-in",
+      { email: state.admins.B.email, password: state.admins.B.password },
+      null,
+    );
+    adminBJar.applySetCookie(adminBSignIn.setCookie);
+    const crossRevoke = await postJson(
+      "/api/staff/invitations/revoke",
+      { invitationId: reInvite.payload.invitationId },
+      adminBJar.header(),
+    );
+    report.check(
+      crossRevoke.status === 404,
+      "an administrator of another school cannot revoke it (404)",
+      `got ${crossRevoke.status}`,
+    );
+
     // --- revoked membership denies staff sign-in
     const revokedUser = await createConfirmedUser(
       randomEmail("revoked.staff"),
@@ -429,7 +680,7 @@ async function main() {
       .select("id")
       .single();
     if (revokedMember.error) throw revokedMember.error;
-    track(revokedUser, revokedMember.data.id);
+    track(revokedUser);
 
     const revokedSignIn = await postJson(
       "/api/staff/sign-in",
@@ -442,205 +693,20 @@ async function main() {
       `got ${revokedSignIn.status}`,
     );
 
-    // --- invitation acceptance: password set ends the temporary session
-    // The acceptee mirrors an invited staff member (invited membership, email
-    // confirmed via the invitation link); password sign-in activates it.
-    const acceptee = await createConfirmedUser(
-      randomEmail("accept"),
-      "OldPassword123!",
-    );
-    const accepteeMember = await admin
-      .from("school_members")
-      .insert({
-        school_id: state.schools.A,
-        user_id: acceptee.id,
-        role: "teacher",
-        status: "invited",
-      })
-      .select("id")
-      .single();
-    if (accepteeMember.error) throw accepteeMember.error;
-    track(acceptee, accepteeMember.data.id);
-    const acceptJar = createCookieJar();
-    const acceptSignIn = await postJson(
-      "/api/staff/sign-in",
-      { email: acceptee.email, password: "OldPassword123!" },
-      null,
-    );
-    acceptJar.applySetCookie(acceptSignIn.setCookie);
+    // --- /join serves the acceptance page ----------------------------------
+    const joinPage = await getRaw("/join", null);
     report.check(
-      acceptSignIn.status === 200 && acceptSignIn.payload?.role === "teacher",
-      "acceptance fixture's first sign-in activates the invited member",
-      `got ${acceptSignIn.status} role=${acceptSignIn.payload?.role}`,
-    );
-
-    const setPasswordAnon = await postJson(
-      "/api/staff/set-password",
-      { password: "NewPassword123!" },
-      null,
-    );
-    report.check(
-      setPasswordAnon.status === 401,
-      "set-password without a session is rejected (401)",
-      `got ${setPasswordAnon.status}`,
-    );
-
-    const setPassword = await postJson(
-      "/api/staff/set-password",
-      { password: "NewPassword123!" },
-      acceptJar.header(),
-    );
-    acceptJar.applySetCookie(setPassword.setCookie);
-    report.check(
-      setPassword.status === 200 && setPassword.payload?.ok === true,
-      "set-password applies the chosen password and ends the session",
-      `got ${setPassword.status}`,
-    );
-
-    const oldPasswordNow = await postJson(
-      "/api/staff/sign-in",
-      { email: acceptee.email, password: "OldPassword123!" },
-      null,
-    );
-    report.check(
-      oldPasswordNow.status === 401,
-      "the old password no longer works (401)",
-      `got ${oldPasswordNow.status}`,
-    );
-
-    // The new password works and the account IS staff; sign-in succeeds again.
-    const newPasswordNow = await postJson(
-      "/api/staff/sign-in",
-      { email: acceptee.email, password: "NewPassword123!" },
-      null,
-    );
-    report.check(
-      newPasswordNow.status === 200 &&
-        newPasswordNow.payload?.role === "teacher",
-      "the new password works (200) and returns the staff role",
-      `got ${newPasswordNow.status} role=${newPasswordNow.payload?.role}`,
-    );
-    // --- invitation email-link route (no real mailbox needed) --------------
-    // The only manual step is the literal email delivery. Everything the emailed
-    // link drives on the app side is exercised here: the token_hash generated
-    // below is the same single-use token the email body carries, so the
-    // /auth/confirm exchange and the /join step are verified without a mailbox.
-    const linkEmail = randomEmail("confirm.link");
-    const linkUser = await createPendingUser(linkEmail);
-    const linkMember = await admin
-      .from("school_members")
-      .insert({
-        school_id: state.schools.A,
-        user_id: linkUser.id,
-        role: "teacher",
-        status: "invited",
-      })
-      .select("id")
-      .single();
-    if (linkMember.error) throw linkMember.error;
-    track(linkUser, linkMember.data.id);
-
-    const generated = await admin.auth.admin.generateLink({
-      type: "invite",
-      email: linkEmail,
-      options: { redirectTo: `${base}/auth/confirm` },
-    });
-    if (generated.error) throw generated.error;
-    const tokenHash = generated.data.properties.hashed_token;
-    report.check(
-      typeof tokenHash === "string" && tokenHash.length > 0,
-      "an invitation link token is generated (the value the email carries)",
-      `verification_type=${generated.data.properties.verification_type}`,
-    );
-
-    const confirmNoParams = await getRaw("/auth/confirm", null);
-    report.check(
-      (confirmNoParams.location ?? "").includes("auth=error"),
-      "/auth/confirm without a token falls back to the error marker",
-      `status=${confirmNoParams.status} location=${confirmNoParams.location}`,
-    );
-
-    const confirmBadToken = await getRaw(
-      "/auth/confirm?token_hash=deadbeefdeadbeef&type=invite",
-      null,
-    );
-    report.check(
-      (confirmBadToken.location ?? "").includes("auth=error"),
-      "/auth/confirm with an invalid token falls back to the error marker",
-      `status=${confirmBadToken.status} location=${confirmBadToken.location}`,
-    );
-
-    const joinAnon = await getRaw("/join", null);
-    report.check(
-      !joinAnon.body.includes("Choose a password"),
-      "/join does not render the password form without a session",
-      `status=${joinAnon.status}`,
-    );
-
-    const confirm = await getRaw(
-      `/auth/confirm?token_hash=${encodeURIComponent(tokenHash)}&type=invite`,
-      null,
-    );
-    const confirmLocation = new URL(confirm.location ?? "/", base);
-    const linkJar = createCookieJar();
-    linkJar.applySetCookie(confirm.setCookie);
-    report.check(
-      confirm.status >= 300 &&
-        confirm.status < 400 &&
-        confirmLocation.pathname === "/join",
-      "the invitation link's /auth/confirm exchanges the token and redirects to /join",
-      `status=${confirm.status} location=${confirmLocation.pathname}`,
-    );
-    report.check(
-      linkJar.header().length > 0,
-      "the token exchange establishes a session for the invited user",
-      linkJar.header().length > 0 ? "session cookie set" : "no cookie set",
-    );
-
-    const joinWithSession = await getRaw("/join", linkJar.header());
-    report.check(
-      joinWithSession.status === 200 &&
-        joinWithSession.body.includes("Choose a password"),
-      "/join renders the password form for the invited session",
-      `status=${joinWithSession.status}`,
-    );
-
-    const linkSetPassword = await postJson(
-      "/api/staff/set-password",
-      { password: "ChosenPassword123!" },
-      linkJar.header(),
-    );
-    report.check(
-      linkSetPassword.status === 200,
-      "the invited user sets a password at /join",
-      `got ${linkSetPassword.status}`,
-    );
-
-    const linkSignIn = await postJson(
-      "/api/staff/sign-in",
-      { email: linkEmail, password: "ChosenPassword123!" },
-      null,
-    );
-    report.check(
-      linkSignIn.status === 200 && linkSignIn.payload?.role === "teacher",
-      "the invited user signs in with the chosen password (activates membership)",
-      `got ${linkSignIn.status} role=${linkSignIn.payload?.role}`,
-    );
-
-    const linkMemberAfter = await admin
-      .from("school_members")
-      .select("status")
-      .eq("id", linkMember.data.id)
-      .single();
-    report.check(
-      linkMemberAfter.data?.status === "active",
-      "the membership activated through the email-link acceptance is active",
-      `status=${linkMemberAfter.data?.status}`,
+      joinPage.status === 200 &&
+        joinPage.body.includes("Accept your invitation"),
+      "/join serves the invitation acceptance page",
+      `status=${joinPage.status}`,
     );
   } finally {
-    // Remove fixtures (memberships first: FK to auth.users is ON DELETE RESTRICT).
-    for (const membershipId of createdMemberships) {
-      await admin.from("school_members").delete().eq("id", membershipId);
+    // Remove fixtures. Memberships are removed by user first: school_members ->
+    // auth.users is ON DELETE RESTRICT, while staff_invitations cascade from
+    // both the membership and the user.
+    for (const user of createdUsers) {
+      await admin.from("school_members").delete().eq("user_id", user.id);
     }
     for (const user of createdUsers) {
       await admin.auth.admin.deleteUser(user.id);

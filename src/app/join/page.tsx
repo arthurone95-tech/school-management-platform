@@ -1,27 +1,16 @@
-import { redirect } from "next/navigation";
-
-import { createSupabaseServerClient } from "@/lib/supabase/server";
-
 import { JoinForm } from "./join-form";
 
 /**
- * Invitation acceptance page (D-024).
+ * Shareable staff invitation acceptance page (D-025).
  *
- * Reached after the staff invitation email's single-use link is exchanged at
- * /auth/confirm, which confirms the email and establishes a session. This page
- * asks the invited staff member to choose a password; the first sign-in with
- * that password activates their school membership. Anyone without a session is
- * sent back to the landing page.
+ * Reached by a link such as `/join#token=<hex>`. The credential lives in the
+ * URL fragment, so it never reaches the server in a request line or an access
+ * log; the browser posts it to `/api/staff/invitations/*` in the request body.
+ *
+ * No session is required: possession of the single-use, expiring link is the
+ * credential. The page holds no server state of its own, so it renders the
+ * client form directly.
  */
-export const instant = false;
-
-export default async function JoinPage() {
-  const supabase = await createSupabaseServerClient();
-  const { data: userData, error } = await supabase.auth.getUser();
-
-  if (error || !userData.user) {
-    redirect("/?auth=required");
-  }
-
-  return <JoinForm email={userData.user.email ?? "you"} />;
+export default function JoinPage() {
+  return <JoinForm />;
 }

@@ -19,7 +19,9 @@
 #
 # `db push` reads supabase_migrations.schema_migrations, so the migrations already
 # applied via the Management API and recorded there are skipped, not re-run
-# (verified 2026-10-15: remote history matches the three local migration files).
+# (verified 2026-10-15: remote history matched the then-local migration files;
+# 20261015000004_staff_invitations.sql was afterwards applied through the same
+# Management-API path and recorded, so a dry-run now lists nothing to apply).
 #
 # Until the database password is available, new migrations are applied with the
 # committed helper `node tests/live/apply-migration.mjs` against the dev
