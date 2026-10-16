@@ -70,3 +70,81 @@ export function createReporter(title) {
     },
   };
 }
+
+/**
+ * HTTP helpers for the live scripts that drive the app itself, including the
+ * session cookie handling. `09-staff-auth.mjs` predates them and keeps its own
+ * local copies so the already-verified suite is left untouched.
+ */
+
+export function createCookieJar() {
+  const store = new Map();
+  return {
+    header: () =>
+      [...store.entries()]
+        .map(([name, value]) => `${name}=${value}`)
+        .join("; "),
+    applySetCookie(rawList) {
+      for (const raw of rawList ?? []) {
+        const [pair] = raw.split(";");
+        const eq = pair?.indexOf("=") ?? -1;
+        if (eq === -1) continue;
+        const name = pair.slice(0, eq).trim();
+        const value = pair.slice(eq + 1).trim();
+        if (value) store.set(name, value);
+        else store.delete(name);
+      }
+    },
+  };
+}
+
+export async function appGetJson(path, cookie) {
+  const res = await fetch(`${appBaseUrl()}${path}`, {
+    headers: cookie ? { cookie } : {},
+  });
+  const payload = await res.json().catch(() => null);
+  return { status: res.status, payload };
+}
+
+export async function appPostJson(path, body, cookie) {
+  const res = await fetch(`${appBaseUrl()}${path}`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...(cookie ? { cookie } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+  const payload = await res.json().catch(() => null);
+  return {
+    status: res.status,
+    payload,
+    setCookie: res.headers.getSetCookie?.() ?? [],
+  };
+}
+
+export async function appGetRaw(path, cookie) {
+  const res = await fetch(`${appBaseUrl()}${path}`, {
+    headers: cookie ? { cookie } : {},
+    redirect: "manual",
+  });
+  const body = await res.text().catch(() => "");
+  return {
+    status: res.status,
+    location: res.headers.get("location"),
+    body,
+  };
+}
+
+export async function waitForApp(attempts = 60) {
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      const res = await fetch(`${appBaseUrl()}/`, { redirect: "manual" });
+      if (res.status) return true;
+    } catch {
+      /* not up yet */
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  return false;
+}

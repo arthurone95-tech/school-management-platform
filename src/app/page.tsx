@@ -1,7 +1,14 @@
+import Link from "next/link";
+
 export default function HomePage() {
   return (
     <main style={{ padding: "2rem", maxWidth: "44rem" }}>
       <h1>School Management Platform</h1>
+      <p>
+        <Link className="link" href="/sign-in">
+          Staff sign-in
+        </Link>
+      </p>
       <p>
         The secure-first foundation (phase 1) is implemented and verified
         against the non-production Supabase project. Current capabilities:

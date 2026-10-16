@@ -346,6 +346,60 @@ Document actual implemented behavior. Do not describe planned endpoints as opera
 - **Database tables:** `school_members` (read, RLS-scoped, to resolve the caller's school), `staff_invitations` (update, server key), `audit_events` (insert: `staff_invitation_revoked`).
 - **Tests:** `tests/live/09-staff-auth.mjs` (401/400/403/200/404, revoked link unusable, cross-school denial).
 
+### 14.11 `GET /api/staff/invitations` — list a school's invitations (implemented 2026-10-16; D-025, D-026)
+
+- **Purpose:** returns the most recent staff invitations for the caller's own school, newest first, each with a derived display status (`pending`, `accepted`, `expired`, `revoked`). This backs the dashboard invitation list.
+- **Authentication:** Supabase session required. No session → `401`.
+- **Required permission:** `member.manage` in the caller's own school, checked via `has_school_permission` RPC; the school is resolved from the caller's own active membership, never from the request. Missing permission → `403`.
+- **Request schema:** none.
+- **Response schema (200):** `{ "ok": true, "invitations": [ { "invitationId": uuid, "email": string, "role": string, "status": "pending" | "accepted" | "expired" | "revoked", "issuedAt": iso8601, "expiresAt": iso8601, "acceptedAt": iso8601 | null, "revokedAt": iso8601 | null } ] }`. Credential hashes are never returned.
+- **Bounded, not paginated:** returns at most the 200 most recent invitations (`STAFF_INVITATION_LIST_LIMIT`). Revisit if a school's invitation history grows.
+- **Database tables:** `school_members` (read, RLS-scoped, to resolve the caller's school), `staff_invitations` (read, server key).
+- **Tests:** `tests/live/10-staff-dashboard.mjs` (401 for no session, 403 for a teacher, 200 for an administrator, cross-school non-disclosure, derived `pending`/`accepted`/`revoked` statuses).
+
+### 14.12 Staff-facing pages (implemented 2026-10-16; D-026, D-027)
+
+- **`GET /sign-in`** — static page holding the staff sign-in form (`email` + `password`, posted to `POST /api/staff/sign-in`). It reads no cookies, so it stays prerendered.
+- **`GET /dashboard`** — Partial Prerender: a static shell that streams the session-gated content behind a `<Suspense>` boundary (required by Cache Components), with prerendering stopped by `connection()` before the session read. An anonymous visitor receives the shell and a streamed redirect to `/sign-in`. A signed-in school administrator gets the invitation dashboard: create an invitation, copy the shareable link, see status and expiry, revoke, and re-invite. The page performs no authorization of its own; every action it calls repeats the identity, school and permission checks server-side. A permission-aware link to the students page is shown only when the caller holds `learner.read`.
+- **`GET /dashboard/learners`** — Partial Prerender, same shell/redirect behaviour as `/dashboard`. A signed-in staff member who holds `learner.read` sees the school's students (paged); one who additionally holds `learner.create` sees the enrolment form. As with `/dashboard`, the page performs no authorization of its own; the endpoints it calls repeat every check server-side.
+- **Tests:** `tests/live/10-staff-dashboard.mjs` (`/sign-in` renders; anonymous `/dashboard` streams a redirect to `/sign-in`; `/dashboard` renders for a signed-in administrator). `tests/live/11-enrolment.mjs` adds the same rendering checks for `/dashboard/learners`, including the enrolment form fields.
+
+### 14.13 `GET /api/staff/classes` — list a school's classes (implemented 2026-10-16; D-027)
+
+- **Purpose:** returns the caller's school active classes for the enrolment form's class selector.
+- **Authentication:** Supabase session required. No session → `401`.
+- **Required permission:** `class.read` in the caller's own school, checked via `has_school_permission`; the school is resolved from the caller's own active membership, never from the request. Missing permission → `403`.
+- **Request schema:** none.
+- **Response schema (200):** `{ "ok": true, "classes": [ { "id": uuid, "name": string } ] }`, ordered by name.
+- **Bounded:** one school has a small, bounded set of classes; no paging.
+- **Database tables:** `school_members` (read, RLS-scoped), `classes` (read on the caller's session client, so Row Level Security scopes it to the caller's school).
+- **Tests:** `tests/live/11-enrolment.mjs` (401 no session, 200 for an administrator, 403 for a permission-less teacher, cross-school non-disclosure).
+
+### 14.14 `GET /api/staff/learners` — list a school's students (implemented 2026-10-16; D-027)
+
+- **Purpose:** returns a page of the caller's school students, newest first, each with the current class placement, backing the students list.
+- **Authentication:** Supabase session required. No session → `401`.
+- **Required permission:** `learner.read` in the caller's own school. Missing permission → `403`.
+- **Request schema:** optional query `page` (positive integer, default `1`, capped at `10000`; non-numeric or below 1 becomes `1`).
+- **Response schema (200):** `{ "ok": true, "learners": [ { "id": uuid, "username": string, "registrationNumber": string, "firstName": string, "lastName": string, "gender": string, "dateOfBirth": "YYYY-MM-DD", "status": string, "classId": uuid | null, "className": string | null } ], "page": number, "pageSize": number, "total": number }`. `pageSize` is `LEARNER_PAGE_SIZE` (25) and `total` is an exact count for the school.
+- **Personal data:** the response contains a child's name and identifiers; it is returned only to a caller holding `learner.read` in that school (`docs/SECURITY_AND_PRIVACY.md` 4). Never cached (`Cache-Control: no-store`).
+- **Database tables:** `school_members` (read, RLS-scoped), `learners` (read), `learner_class_placements` + `classes` (read, to resolve the current placement) — all on the caller's session client, so RLS is the boundary.
+- **Tests:** `tests/live/11-enrolment.mjs` (401 no session, 200 for an administrator with the placement attached, 403 for a permission-less teacher, cross-school non-disclosure).
+
+### 14.15 `POST /api/staff/learners` — enrol a student (implemented 2026-10-16; D-018, D-027)
+
+- **Purpose:** registers a student in the caller's school and creates the initial class placement, in one request — the first end-to-end school workflow (D-018).
+- **Authentication:** Supabase session required. No session → `401`.
+- **Required permission:** `learner.create` in the caller's own school. Missing permission → `403`.
+- **Request schema (JSON):** `{ "registrationNumber": string (1–32, normalised, unique within the school), "firstName": string (1–80), "lastName": string (1–80), "gender": "male" | "female" | "other", "dateOfBirth": "YYYY-MM-DD" (a real date, not in the future, not before 1900), "residentialAddress": string (1–400), "guardianPhone": string (1–40), "guardianEmail": string (optional, valid email, max 254) | null, "classId": uuid (an active class in the caller's school) }`. Validation is in `src/lib/enrolment/requests.ts`.
+- **Response schema (201):** `{ "ok": true, "learner": { …same shape as the list item… }, "completedExisting": boolean }`. `completedExisting` is `true` when an unplaced student with that registration number already existed and the placement was completed now (see Idempotency below).
+- **Errors:** `400` invalid or missing field, or a `classId` that is not an active class in the caller's school; `409` the registration number is already used in the school (or already enrolled); `403` missing permission; `401` no session. Error bodies are `{ "ok": false, "error": string }` and never disclose another school's data.
+- **Idempotency and partial failure (D-027):** PostgREST exposes no multi-statement transaction, so the learner insert and the placement insert are two calls. If the placement insert fails, the student exists without a placement; repeating the same request then **completes the placement** for that student instead of failing as a duplicate, and reports `completedExisting: true`. A repeat for an already-placed student is a `409`.
+- **Authorization boundary:** the writes run on the caller's session client, not the server-only key, so Row Level Security on `learners` and `learner_class_placements` and the composite foreign keys (`placements_learner_school_fkey`, `placements_class_school_fkey`) enforce that the student, the class and the placement all belong to one school, independently of the handler.
+- **Usernames:** generated server-side with the approved helpers; unique within the school; collisions resolved by numeric suffix and retried on a unique violation.
+- **Database tables:** `school_members` (read), `classes` (read), `learners` (insert + read), `learner_class_placements` (insert). Audit triggers on `learners` and `learner_class_placements` record the change.
+- **Tests:** `tests/live/11-enrolment.mjs` (201 create, 200 list, 409 duplicate, 400 invalid gender / future date of birth / another school's class, distinct usernames for identical names, 403 for a permission-less teacher, and the persisted tenant-consistent open placement).
+
 ## 15. Implementation Gate
 
 Implement only the operations required for the selected end-to-end workflow.

@@ -32,6 +32,8 @@ const steps = [
   "04-rls-isolation.mjs",
   "05-signup-guard.mjs",
   "09-staff-auth.mjs",
+  "10-staff-dashboard.mjs",
+  "11-enrolment.mjs",
 ];
 
 if (

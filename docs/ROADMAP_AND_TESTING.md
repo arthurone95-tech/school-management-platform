@@ -115,6 +115,14 @@ Exit criteria:
 - Failure and retry behavior is understood.
 - The user can verify the workflow without relying on unsupported claims.
 
+**Status 2026-10-16 (D-026, D-027):** the section above now has two verified parts.
+
+The **staff-facing slice** (D-024/D-025) is implemented: the staff sign-in page (`/sign-in`), the administrator dashboard (`/dashboard`) for creating, sharing, listing and revoking shareable invitations, and the read-only `GET /api/staff/invitations` endpoint behind it.
+
+The **chosen workflow** — student enrolment including class placement (D-018) — is implemented as a vertical slice: `GET /api/staff/classes` (the class selector source), `GET /api/staff/learners` (a paged list with each student's current placement) and `POST /api/staff/learners` (register a student and create the initial placement in one request), behind the administrator-only Students page (`/dashboard/learners`). The workflow exercises authentication, the resolved active school, a permission check, database reads and writes, server-side validation, database-level authorization (Row Level Security on `classes`, `learners` and `learner_class_placements`, plus the composite foreign keys that keep a learner, a class and a placement in one school), and loading/empty/error/success states in a responsive interface.
+
+Gates pass: format, lint, type-check, build (unit tests 151) and the live suites (`node tests/live/run-all.mjs`) including `10-staff-dashboard.mjs` (16 checks) and the new `11-enrolment.mjs` (23 checks: 401/403/400/409/201/200 paths, anonymous redirect and signed-in rendering of `/dashboard/learners`, cross-school denial, duplicate handling, username collision, and the persisted tenant-consistent placement). The exit criteria above are claimed **for this workflow only**; the other capabilities listed under Phase 3 remain unimplemented. Known limitations are recorded in D-027 (no single-call transaction across the two inserts; no placement change, deactivation or correction yet; the learner list is paged rather than fully searchable).
+
 ### Phase 3: Core school administration
 
 After the first workflow is validated, implement approved foundational capabilities in a deliberate order.

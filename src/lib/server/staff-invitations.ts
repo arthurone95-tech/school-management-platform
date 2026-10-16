@@ -3,6 +3,10 @@ import "server-only";
 import { activationExpiry } from "@/lib/domain/activation";
 import type { SchoolMembershipRow } from "@/lib/staff/membership";
 import {
+  deriveInvitationStatus,
+  type InvitationStatus,
+} from "@/lib/staff/invitation-status";
+import {
   generateInvitationToken,
   isValidInvitationTokenShape,
   STAFF_INVITATION_TTL_HOURS,
@@ -211,6 +215,74 @@ export async function findUnacceptedStaffInvitation(
     userId: data.user_id,
     role: data.role,
   };
+}
+
+/** Cap on how many recent invitations the staff dashboard lists at once. */
+export const STAFF_INVITATION_LIST_LIMIT = 200;
+
+export interface StaffInvitationSummary {
+  readonly invitationId: string;
+  readonly email: string;
+  readonly role: string;
+  readonly status: InvitationStatus;
+  readonly issuedAt: string;
+  readonly expiresAt: string;
+  readonly acceptedAt: string | null;
+  readonly revokedAt: string | null;
+}
+
+interface StaffInvitationListRow {
+  id: string;
+  email: string;
+  role: string;
+  issued_at: string;
+  expires_at: string;
+  accepted_at: string | null;
+  revoked_at: string | null;
+}
+
+/**
+ * Lists the most recent invitations for one school, newest first, each with a
+ * derived display status (D-025). Scoped by school so a caller can never see
+ * another school's invitations. Returns `null` when the read fails, so the
+ * caller answers with an error rather than a misleading empty list.
+ *
+ * Bounded rather than paginated: a school's invitation history is small and the
+ * dashboard only needs the recent rows. Revisit if it grows.
+ */
+export async function listStaffInvitations(
+  client: AdminClient,
+  schoolId: string,
+  now: Date = new Date(),
+): Promise<StaffInvitationSummary[] | null> {
+  const { data, error } = await client
+    .from("staff_invitations")
+    .select("id, email, role, issued_at, expires_at, accepted_at, revoked_at")
+    .eq("school_id", schoolId)
+    .order("created_at", { ascending: false })
+    .limit(STAFF_INVITATION_LIST_LIMIT);
+
+  if (error || !data) {
+    return null;
+  }
+
+  return (data as StaffInvitationListRow[]).map((row) => ({
+    invitationId: row.id,
+    email: row.email,
+    role: row.role,
+    status: deriveInvitationStatus(
+      {
+        acceptedAt: row.accepted_at,
+        revokedAt: row.revoked_at,
+        expiresAt: row.expires_at,
+      },
+      now,
+    ),
+    issuedAt: row.issued_at,
+    expiresAt: row.expires_at,
+    acceptedAt: row.accepted_at,
+    revokedAt: row.revoked_at,
+  }));
 }
 
 /**
