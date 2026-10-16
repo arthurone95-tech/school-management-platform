@@ -33,10 +33,12 @@ export async function DashboardGate() {
     redirect("/sign-in");
   }
 
-  const [canManageMembers, canViewStudents] = await Promise.all([
-    context.hasPermission("member.manage"),
-    context.hasPermission("learner.read"),
-  ]);
+  const [canManageMembers, canViewStudents, canManageClasses] =
+    await Promise.all([
+      context.hasPermission("member.manage"),
+      context.hasPermission("learner.read"),
+      context.hasPermission("class.manage"),
+    ]);
 
   return (
     <DashboardClient
@@ -45,6 +47,7 @@ export async function DashboardGate() {
       schoolName={context.schoolName}
       canManageMembers={canManageMembers}
       canViewStudents={canViewStudents}
+      canManageClasses={canManageClasses}
     />
   );
 }

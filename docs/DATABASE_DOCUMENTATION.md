@@ -132,6 +132,8 @@ Where appropriate, implement:
 - Tenant-consistent relationships.
 - Unique constraints preventing duplicate records where duplicates are invalid.
 
+**Implemented for the enrolment slice (D-028).** The rules the new writes depend on are database constraints, not only application checks: `classes_school_name_key` makes a class name unique **per school** and is exact-match, so it also covers deactivated classes (the application additionally rejects a name differing only in case); `learners_school_registration_key` and `learners_school_username_key` make the registration number and username unique per school; the partial unique index `placements_one_current_per_learner` permits at most one open placement per learner while allowing any number of ended ones; the composite foreign keys `placements_learner_school_fkey` and `placements_class_school_fkey` keep a placement, its learner and its class in one school; and `learners.status` is constrained to `active`/`inactive`. A class is retired by deactivation: `learner_class_placements` references `classes` `ON DELETE RESTRICT`, so a class any learner was placed in cannot be deleted.
+
 Define expected behavior for duplicate attendance submissions, repeated payment callbacks, conflicting updates, and simultaneous edits.
 
 For financial records, use appropriate exact numeric types rather than floating-point arithmetic for currency amounts. Define currency explicitly where relevant.

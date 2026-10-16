@@ -361,30 +361,31 @@ Document actual implemented behavior. Do not describe planned endpoints as opera
 
 - **`GET /sign-in`** — static page holding the staff sign-in form (`email` + `password`, posted to `POST /api/staff/sign-in`). It reads no cookies, so it stays prerendered.
 - **`GET /dashboard`** — Partial Prerender: a static shell that streams the session-gated content behind a `<Suspense>` boundary (required by Cache Components), with prerendering stopped by `connection()` before the session read. An anonymous visitor receives the shell and a streamed redirect to `/sign-in`. A signed-in school administrator gets the invitation dashboard: create an invitation, copy the shareable link, see status and expiry, revoke, and re-invite. The page performs no authorization of its own; every action it calls repeats the identity, school and permission checks server-side. A permission-aware link to the students page is shown only when the caller holds `learner.read`.
-- **`GET /dashboard/learners`** — Partial Prerender, same shell/redirect behaviour as `/dashboard`. A signed-in staff member who holds `learner.read` sees the school's students (paged); one who additionally holds `learner.create` sees the enrolment form. As with `/dashboard`, the page performs no authorization of its own; the endpoints it calls repeat every check server-side.
-- **Tests:** `tests/live/10-staff-dashboard.mjs` (`/sign-in` renders; anonymous `/dashboard` streams a redirect to `/sign-in`; `/dashboard` renders for a signed-in administrator). `tests/live/11-enrolment.mjs` adds the same rendering checks for `/dashboard/learners`, including the enrolment form fields.
+- **`GET /dashboard/learners`** — Partial Prerender, same shell/redirect behaviour as `/dashboard`. A signed-in staff member who holds `learner.read` sees the school's students (paged, active by default); one who additionally holds `learner.create` sees the enrolment form. A caller holding `learner.update` can correct a record, deactivate or reactivate a student; one holding `learner.placement.manage` can move a student to another class. As with `/dashboard`, the page performs no authorization of its own; the endpoints it calls repeat every check server-side.
+- **`GET /dashboard/classes`** — Partial Prerender, same shell/redirect behaviour as `/dashboard`. A signed-in staff member who holds `class.manage` manages the school's classes (create, rename, deactivate/reactivate). A caller without that permission is told their role cannot view classes. As with `/dashboard`, the page performs no authorization of its own; the endpoints it calls repeat every check server-side.
+- **Tests:** `tests/live/10-staff-dashboard.mjs` (`/sign-in` renders; anonymous `/dashboard` streams a redirect to `/sign-in`; `/dashboard` renders for a signed-in administrator). `tests/live/11-enrolment.mjs` adds the same rendering checks for `/dashboard/learners`, including the enrolment form fields. `tests/live/12-administration.mjs` covers `/dashboard/classes` for an administrator and a permission-less teacher.
 
-### 14.13 `GET /api/staff/classes` — list a school's classes (implemented 2026-10-16; D-027)
+### 14.13 `GET /api/staff/classes` — list a school's classes (implemented 2026-10-16; D-027, D-028)
 
-- **Purpose:** returns the caller's school active classes for the enrolment form's class selector.
+- **Purpose:** returns the caller's school classes for the enrolment form's class selector and for the class-management page.
 - **Authentication:** Supabase session required. No session → `401`.
 - **Required permission:** `class.read` in the caller's own school, checked via `has_school_permission`; the school is resolved from the caller's own active membership, never from the request. Missing permission → `403`.
-- **Request schema:** none.
-- **Response schema (200):** `{ "ok": true, "classes": [ { "id": uuid, "name": string } ] }`, ordered by name.
+- **Request schema:** optional query `includeInactive` (the string `true` includes deactivated classes; anything else, or absence, returns active classes only).
+- **Response schema (200):** `{ "ok": true, "classes": [ { "id": uuid, "name": string, "isActive": boolean } ] }`, ordered by name. The default active-only response keeps the enrolment selector unchanged (D-028).
 - **Bounded:** one school has a small, bounded set of classes; no paging.
 - **Database tables:** `school_members` (read, RLS-scoped), `classes` (read on the caller's session client, so Row Level Security scopes it to the caller's school).
-- **Tests:** `tests/live/11-enrolment.mjs` (401 no session, 200 for an administrator, 403 for a permission-less teacher, cross-school non-disclosure).
+- **Tests:** `tests/live/11-enrolment.mjs` (401 no session, 200 for an administrator, 403 for a permission-less teacher, cross-school non-disclosure). `tests/live/12-administration.mjs` adds the `includeInactive` behaviour (a deactivated class disappears from the default list and returns under `includeInactive=true`).
 
-### 14.14 `GET /api/staff/learners` — list a school's students (implemented 2026-10-16; D-027)
+### 14.14 `GET /api/staff/learners` — list a school's students (implemented 2026-10-16; D-027, D-028)
 
 - **Purpose:** returns a page of the caller's school students, newest first, each with the current class placement, backing the students list.
 - **Authentication:** Supabase session required. No session → `401`.
 - **Required permission:** `learner.read` in the caller's own school. Missing permission → `403`.
-- **Request schema:** optional query `page` (positive integer, default `1`, capped at `10000`; non-numeric or below 1 becomes `1`).
-- **Response schema (200):** `{ "ok": true, "learners": [ { "id": uuid, "username": string, "registrationNumber": string, "firstName": string, "lastName": string, "gender": string, "dateOfBirth": "YYYY-MM-DD", "status": string, "classId": uuid | null, "className": string | null } ], "page": number, "pageSize": number, "total": number }`. `pageSize` is `LEARNER_PAGE_SIZE` (25) and `total` is an exact count for the school.
+- **Request schema:** optional query `page` (positive integer, default `1`, capped at `10000`; non-numeric or below 1 becomes `1`); optional query `status` (`active` — the default — or `inactive`; any other value falls back to `active`). The default active-only view is how D-023's "not part of routine operational views" applies to the list (D-028).
+- **Response schema (200):** `{ "ok": true, "learners": [ { "id": uuid, "username": string, "registrationNumber": string, "firstName": string, "lastName": string, "gender": string, "dateOfBirth": "YYYY-MM-DD", "status": string, "classId": uuid | null, "className": string | null } ], "page": number, "pageSize": number, "total": number }`. `pageSize` is `LEARNER_PAGE_SIZE` (25) and `total` is an exact count for the school. The list carries no address or guardian contact details; those are read one learner at a time (14.18).
 - **Personal data:** the response contains a child's name and identifiers; it is returned only to a caller holding `learner.read` in that school (`docs/SECURITY_AND_PRIVACY.md` 4). Never cached (`Cache-Control: no-store`).
 - **Database tables:** `school_members` (read, RLS-scoped), `learners` (read), `learner_class_placements` + `classes` (read, to resolve the current placement) — all on the caller's session client, so RLS is the boundary.
-- **Tests:** `tests/live/11-enrolment.mjs` (401 no session, 200 for an administrator with the placement attached, 403 for a permission-less teacher, cross-school non-disclosure).
+- **Tests:** `tests/live/11-enrolment.mjs` (401 no session, 200 for an administrator with the placement attached, 403 for a permission-less teacher, cross-school non-disclosure). `tests/live/12-administration.mjs` adds the `status` filter (a deactivated student leaves the default list and appears under `status=inactive`).
 
 ### 14.15 `POST /api/staff/learners` — enrol a student (implemented 2026-10-16; D-018, D-027)
 
@@ -399,6 +400,86 @@ Document actual implemented behavior. Do not describe planned endpoints as opera
 - **Usernames:** generated server-side with the approved helpers; unique within the school; collisions resolved by numeric suffix and retried on a unique violation.
 - **Database tables:** `school_members` (read), `classes` (read), `learners` (insert + read), `learner_class_placements` (insert). Audit triggers on `learners` and `learner_class_placements` record the change.
 - **Tests:** `tests/live/11-enrolment.mjs` (201 create, 200 list, 409 duplicate, 400 invalid gender / future date of birth / another school's class, distinct usernames for identical names, 403 for a permission-less teacher, and the persisted tenant-consistent open placement).
+
+### 14.16 `POST /api/staff/classes` — create a class (implemented 2026-10-16; D-028)
+
+- **Purpose:** creates a class in the caller's school. This is the first class-administration write; the enrolment form previously only *selected* an existing class (D-027).
+- **Authentication:** Supabase session required. No session → `401`.
+- **Required permission:** `class.manage` in the caller's own school. Missing permission → `403`.
+- **Request schema (JSON):** `{ "name": string (1–80, trimmed) }`. A blank or over-long name → `400`.
+- **Response schema (201):** `{ "ok": true, "klass": { "id": uuid, "name": string, "isActive": true } }`.
+- **Errors:** `400` invalid body; `409` a class with that name already exists in the school; `403` missing permission; `401` no session. Error bodies are `{ "ok": false, "error": string }`.
+- **Uniqueness:** the database constraint `classes_school_name_key` is exact-match and includes deactivated classes, so the handler additionally rejects a name differing only in case (D-028); a name a deactivated class still holds is refused until that class is renamed.
+- **Authorization boundary:** the insert runs on the caller's session client, so `classes_insert_managers` (which requires `class.manage`) is the real enforcement point.
+- **Database tables:** `school_members` (read, to resolve the caller's school), `classes` (insert). The `classes` audit trigger records the insert.
+- **Tests:** `tests/live/12-administration.mjs` (201 create, 409 exact duplicate, 409 case-only duplicate, 400 blank name, 403 for a permission-less teacher).
+
+### 14.17 `POST /api/staff/classes/update` — rename, deactivate or reactivate a class (implemented 2026-10-16; D-028)
+
+- **Purpose:** renames a class and/or sets its active flag. A class is retired by deactivation, never deleted: `learner_class_placements` references it `ON DELETE RESTRICT`, so past placements stay interpretable (D-023, `ENROLMENT_PERMISSION_MODEL` 5.2, 5.3). The application exposes no delete path.
+- **Authentication:** Supabase session required. No session → `401`.
+- **Required permission:** `class.manage` in the caller's own school. Missing permission → `403`.
+- **Request schema (JSON):** `{ "classId": uuid, "name"?: string (1–80), "isActive"?: boolean }`. At least one of `name` / `isActive` must be present → otherwise `400`.
+- **Response schema (200):** `{ "ok": true, "klass": { "id": uuid, "name": string, "isActive": boolean } }`.
+- **Errors:** `400` invalid body or no change requested; `404` the class does not exist in the caller's school (another school's class is indistinguishable); `409` the new name collides with another class (case-insensitively); `403`; `401`.
+- **No-op writes:** setting the name or flag already in force writes nothing and returns the current class, so no empty audit event is produced.
+- **Authorization boundary and audit:** the update runs on the caller's session client (`classes_update_managers`), scoped to the caller's school; the `classes` audit trigger records the changed column names.
+- **Database tables:** `school_members` (read), `classes` (read + update).
+- **Tests:** `tests/live/12-administration.mjs` (200 rename, 409 collision, 400 no-change, 200 deactivate, hidden from the default list, still listed with `includeInactive=true`, 200 reactivate, 404 another school's class, 403 for a teacher); the class-name uniqueness, class update policy and class audit trail are also checked against PGlite in `tests/database/enrolment-foundation.test.ts`.
+
+### 14.18 `POST /api/staff/learners/detail` — read one student's full record (implemented 2026-10-16; D-028)
+
+- **Purpose:** returns one student's full record — including residential address and guardian contact details — for the correction form.
+- **Authentication:** Supabase session required. No session → `401`.
+- **Required permission:** `learner.read` in the caller's own school. Missing permission → `403`.
+- **Request schema (JSON):** `{ "learnerId": uuid }`. A missing or malformed id → `400`.
+- **Response schema (200):** `{ "ok": true, "learner": { "id": uuid, "username": string, "registrationNumber": string, "firstName": string, "lastName": string, "gender": string, "dateOfBirth": "YYYY-MM-DD", "status": string, "classId": uuid | null, "className": string | null, "residentialAddress": string, "guardianPhone": string, "guardianEmail": string | null } }`.
+- **Why `POST`:** the internal student id travels in the body so it never appears in a request line, and therefore never in an access log (`docs/SECURITY_AND_PRIVACY.md` 11) — the same reasoning that put the D-025 invitation credential in a fragment.
+- **Personal data:** address and guardian contact details are returned for **one** learner at a time and are deliberately not added to the paged list, so listing a school does not disclose every child's address (`docs/SECURITY_AND_PRIVACY.md` 4). Never cached (`Cache-Control: no-store`).
+- **Errors:** `400` invalid body; `404` the student does not exist in the caller's school (another school's student is indistinguishable); `403`; `401`.
+- **Database tables:** `school_members` (read), `learners` + `learner_class_placements` + `classes` (read, on the caller's session client).
+- **Tests:** `tests/live/12-administration.mjs` (200 with address and guardian details, 404 for another school's administrator, 403 for a permission-less teacher, 401 no session).
+
+### 14.19 `POST /api/staff/learners/update` — correct a student record (implemented 2026-10-16; D-028)
+
+- **Purpose:** applies a partial correction to a student's record under `learner.update`.
+- **Authentication:** Supabase session required. No session → `401`.
+- **Required permission:** `learner.update` in the caller's own school. Missing permission → `403`.
+- **Request schema (JSON):** `{ "learnerId": uuid, "registrationNumber"?: string, "firstName"?: string, "lastName"?: string, "gender"?: "male" | "female" | "other", "dateOfBirth"?: "YYYY-MM-DD", "residentialAddress"?: string, "guardianPhone"?: string, "guardianEmail"?: string | null }`. Only the fields present are written; a blank `guardianEmail` or explicit `null` clears it. At least one field besides `learnerId` must be present → otherwise `400`. Field rules and messages are shared with enrolment (`src/lib/enrolment/requests.ts`).
+- **Response schema (200):** `{ "ok": true, "learner": LearnerSummary }` (the corrected summary, without the correction-form-only fields).
+- **Errors:** `400` invalid body, no fields, or a malformed field; `404` the student does not exist in the caller's school; `409` the registration number is already used in the school; `403`; `401`.
+- **Not re-derived:** the `username` is the stable sign-in identifier (`ENROLMENT_PERMISSION_MODEL` 7) and is intentionally left unchanged by a correction; the response carries it unchanged.
+- **Second approval:** corrections are applied immediately; second-approval remains **off**, the approved default (D-028; `ENROLMENT_PERMISSION_MODEL` 5.4).
+- **Authorization boundary and audit:** the update runs on the caller's session client (`learners_update_managers`), scoped to the caller's school; the `learners` audit trigger records the changed column names but not their values.
+- **Database tables:** `school_members` (read), `learners` (read + update).
+- **Tests:** `tests/live/12-administration.mjs` (200 correction that leaves other fields and the username intact, 400 empty correction, 409 duplicate registration number, 404 another school's administrator, 403 for a teacher).
+
+### 14.20 `POST /api/staff/learners/status` — deactivate or reactivate a student (implemented 2026-10-16; D-028)
+
+- **Purpose:** sets a student's status to `active` or `inactive`. Deactivation is the state change for a student who leaves; the platform holds no delete policy on `learners`, so history stays intact (D-023, `ENROLMENT_PERMISSION_MODEL` 5.2).
+- **Authentication:** Supabase session required. No session → `401`.
+- **Required permission:** `learner.update` in the caller's own school. Missing permission → `403`.
+- **Request schema (JSON):** `{ "learnerId": uuid, "status": "active" | "inactive" }`. Any other status → `400`.
+- **Response schema (200):** `{ "ok": true, "learner": LearnerSummary }`.
+- **Errors:** `400` invalid body or unsupported status; `404` the student does not exist in the caller's school; `403`; `401`.
+- **No-op writes:** setting the status already in force writes nothing and returns the current student.
+- **Effect on the list:** `GET /api/staff/learners` returns active students only by default, so a deactivated student leaves the routine list and is reached through `?status=inactive` (D-023, D-028).
+- **Authorization boundary and audit:** the update runs on the caller's session client (`learners_update_managers`), scoped to the caller's school; the `learners` audit trigger records the change.
+- **Database tables:** `school_members` (read), `learners` (read + update).
+- **Tests:** `tests/live/12-administration.mjs` (200 deactivate, removed from the default list and present under `status=inactive`, 200 idempotent repeat, 400 unsupported status, 200 reactivate, 404 another school's administrator, 403 for a teacher).
+
+### 14.21 `POST /api/staff/learners/placement` — change a student's class (implemented 2026-10-16; D-028)
+
+- **Purpose:** moves a student to another class by ending the current placement and opening a new one, keeping one current placement per learner (`ENROLMENT_PERMISSION_MODEL` 5.5).
+- **Authentication:** Supabase session required. No session → `401`.
+- **Required permission:** `learner.placement.manage` in the caller's own school (the permission the `placements_update_managers` policy requires). Missing permission → `403`.
+- **Request schema (JSON):** `{ "learnerId": uuid, "classId": uuid }`. A missing or malformed id → `400`.
+- **Response schema (200):** `{ "ok": true, "learner": LearnerSummary, "unchanged": boolean }`. `unchanged` is `true` when the student was already in that class; then no placement row is written and `learner` is the current summary.
+- **Errors:** `400` invalid body, or a `classId` that is not an active class in the caller's school (another school's class is refused); `404` the student does not exist in the caller's school; `409` the student is inactive, or a concurrent change left the one-open-placement slot occupied; `403`; `401`.
+- **Order and recovery:** the current placement is ended first, then the new one is inserted, because no single-call transaction is available. If the insert fails, the student is left unplaced; repeating the request places them (this also repairs a partial enrolment from D-027). The partial unique index `placements_one_current_per_learner` guarantees one open placement even under a concurrent change; a unique violation is surfaced as `409`.
+- **Authorization boundary:** both writes run on the caller's session client, so the `learner_class_placements` insert/update policies and the composite foreign keys (`placements_learner_school_fkey`, `placements_class_school_fkey`) keep the student and the class inside one school.
+- **Database tables:** `school_members` (read), `learners` (read), `classes` (read), `learner_class_placements` (read + update + insert). Audit triggers on `learner_class_placements` record the change.
+- **Tests:** `tests/live/12-administration.mjs` (200 move with exactly one open placement afterwards, 200 no-op for the current class, 409 inactive student, 400 another school's class, 404 unknown student, 404 another school's administrator, 200 recovery for a student with no placement, 403 for a teacher); the one-open-placement invariant is also checked against PGlite in `tests/database/enrolment-foundation.test.ts`.
 
 ## 15. Implementation Gate
 

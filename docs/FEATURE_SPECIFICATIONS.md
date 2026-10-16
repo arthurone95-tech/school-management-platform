@@ -112,6 +112,8 @@ Potential workflows include:
 - Preserve relevant enrolment history when a student's status or class changes.
 - Define correction and deletion rules before implementation.
 
+**Implementation status 2026-10-16 (D-028):** the enrolment slice now covers several of these workflows. Student enrolment (D-018, D-027), class placement and placement change, record correction, and transfer or withdrawal — represented as deactivate/reactivate, never a hard delete (D-023) — are implemented behind the administrator-only `/dashboard/learners` page, with classes administered on `/dashboard/classes`. The correction and deletion rules the requirements call for are the ones D-028 records: corrections are immediate and audited (no second approval, the approved default), and there is no delete path for a student. Student identification and duplicate detection, authorized search and reporting, and controlled export and retention remain unimplemented.
+
 ## 6. Attendance, Assessment and Reporting
 
 These are potential modules and must be scoped individually.

@@ -8,6 +8,7 @@
 export interface ClassSummary {
   readonly id: string;
   readonly name: string;
+  readonly isActive: boolean;
 }
 
 export interface LearnerSummary {
@@ -21,6 +22,17 @@ export interface LearnerSummary {
   readonly status: string;
   readonly classId: string | null;
   readonly className: string | null;
+}
+
+/**
+ * The full learner record for a correction form. The extra fields are fetched
+ * one learner at a time so the paged list does not disclose every child's
+ * address and guardian contact details (docs/SECURITY_AND_PRIVACY.md 4).
+ */
+export interface LearnerDetail extends LearnerSummary {
+  readonly residentialAddress: string;
+  readonly guardianPhone: string;
+  readonly guardianEmail: string | null;
 }
 
 export interface LearnerPage {

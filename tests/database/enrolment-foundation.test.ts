@@ -253,6 +253,95 @@ describe("deactivate, do not delete", () => {
   });
 });
 
+describe("class administration (D-028)", () => {
+  it("keeps class names unique within a school but shared across schools", async () => {
+    await actAsUser(db, ADMIN_A);
+    await expect(
+      db.query(
+        `insert into public.classes (school_id, name)
+         values ('${SCHOOL_A}', 'Primary 1')`,
+      ),
+    ).rejects.toThrow(/duplicate key value/i);
+
+    // The same name in two schools is legitimate: uniqueness is (school_id, name).
+    await db.query(
+      `insert into public.classes (school_id, name) values ('${SCHOOL_A}', 'JHS 1')`,
+    );
+    await actAsUser(db, ADMIN_B);
+    await db.query(
+      `insert into public.classes (school_id, name) values ('${SCHOOL_B}', 'JHS 1')`,
+    );
+
+    await actAsSystem(db);
+    const rows = await db.query(
+      `select school_id from public.classes where name = 'JHS 1'`,
+    );
+    expect(rows.rows).toHaveLength(2);
+    await db.query(`delete from public.classes where name = 'JHS 1'`);
+  });
+
+  it("lets an administrator rename and deactivate their own class, and audits it", async () => {
+    await actAsUser(db, ADMIN_A);
+    const updated = await db.query(
+      `update public.classes set name = 'Primary 2B', is_active = false
+        where id = '${CLASS_A2}' returning id`,
+    );
+    expect(updated.rows).toHaveLength(1);
+
+    await actAsSystem(db);
+    const events = await db.query<{
+      action: string;
+      details: { changed_columns?: string[] };
+    }>(
+      `select action, details from public.audit_events
+        where target_table = 'classes' and target_id = '${CLASS_A2}'
+        order by id desc limit 1`,
+    );
+    expect(events.rows[0]?.action).toBe("update");
+    expect(events.rows[0]?.details.changed_columns).toEqual(
+      expect.arrayContaining(["name", "is_active"]),
+    );
+
+    await db.query(
+      `update public.classes set name = 'Primary 2', is_active = true
+        where id = '${CLASS_A2}'`,
+    );
+  });
+
+  it("refuses a teacher updating a class: no class.manage (D-021)", async () => {
+    await actAsUser(db, STAFF_A);
+    const attempted = await db.query(
+      `update public.classes set name = 'Renamed' where id = '${CLASS_A2}' returning id`,
+    );
+    expect(attempted.rows).toHaveLength(0);
+  });
+
+  it("refuses an administrator updating another school's class", async () => {
+    await actAsUser(db, ADMIN_A);
+    const attempted = await db.query(
+      `update public.classes set name = 'Hijacked' where id = '${CLASS_B1}' returning id`,
+    );
+    expect(attempted.rows).toHaveLength(0);
+
+    await actAsSystem(db);
+    const stillNamed = await db.query<{ name: string }>(
+      `select name from public.classes where id = '${CLASS_B1}'`,
+    );
+    expect(stillNamed.rows[0]?.name).toBe("Primary 1");
+  });
+});
+
+describe("learner status is a state change, never free text", () => {
+  it("rejects an unknown status value", async () => {
+    await actAsSystem(db);
+    await expect(
+      db.query(
+        `update public.learners set status = 'removed' where id = '${LEARNER_A}'`,
+      ),
+    ).rejects.toThrow(/check constraint/i);
+  });
+});
+
 describe("one current placement per learner", () => {
   it("rejects a second open placement, then accepts one after the first ends", async () => {
     await actAsSystem(db);

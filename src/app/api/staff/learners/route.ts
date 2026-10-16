@@ -1,6 +1,10 @@
 import type { NextResponse } from "next/server";
 
-import { parseEnrolmentInput, parsePageParam } from "@/lib/enrolment/requests";
+import {
+  parseEnrolmentInput,
+  parseLearnerStatusFilter,
+  parsePageParam,
+} from "@/lib/enrolment/requests";
 import { enrolLearner, listLearners } from "@/lib/server/enrolment";
 import { json } from "@/lib/server/http";
 import { resolveSchoolAccess } from "@/lib/server/school-access";
@@ -10,7 +14,9 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
  * Student enrolment (D-018).
  *
  * `GET` lists the caller's school learners with their current class placement —
- * `learner.read`. `POST` registers a learner and creates the initial placement —
+ * `learner.read`. By default it returns active students only; `?status=inactive`
+ * explicitly reaches inactive records, which are kept out of routine views
+ * (D-023). `POST` registers a learner and creates the initial placement —
  * `learner.create`. In both cases the school comes from the caller's own active
  * membership, the permission is checked server-side, and Row Level Security on
  * `learners` and `learner_class_placements` is the database-level boundary, so
@@ -25,9 +31,11 @@ export async function GET(request: Request): Promise<NextResponse> {
     return json({ ok: false, error: access.message }, access.status);
   }
 
-  const page = parsePageParam(new URL(request.url).searchParams.get("page"));
+  const url = new URL(request.url);
+  const page = parsePageParam(url.searchParams.get("page"));
+  const status = parseLearnerStatusFilter(url.searchParams.get("status"));
 
-  const result = await listLearners(supabase, access.schoolId, page);
+  const result = await listLearners(supabase, access.schoolId, page, status);
   if (result === null) {
     return json({ ok: false, error: "The students could not be loaded." }, 500);
   }

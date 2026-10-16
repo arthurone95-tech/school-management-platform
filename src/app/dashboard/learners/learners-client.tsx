@@ -11,9 +11,16 @@ import { SelectField, TextField } from "@/components/ui/form";
 import {
   GENDERS,
   parseEnrolmentInput,
+  parseLearnerCorrectionInput,
+  parseLearnerStatusFilter,
   type Gender,
+  type LearnerStatus,
 } from "@/lib/enrolment/requests";
-import type { ClassSummary, LearnerSummary } from "@/lib/enrolment/types";
+import type {
+  ClassSummary,
+  LearnerDetail,
+  LearnerSummary,
+} from "@/lib/enrolment/types";
 import { roleLabel } from "@/lib/staff/roles";
 
 type ClassesState =
@@ -31,6 +38,11 @@ type ListState =
       readonly total: number;
     }
   | { readonly kind: "error"; readonly message: string };
+
+/** Which inline editor is open for which student. */
+type RowEditor =
+  | { readonly learnerId: string; readonly mode: "details" }
+  | { readonly learnerId: string; readonly mode: "class" };
 
 interface EnrolSuccess {
   readonly name: string;
@@ -85,12 +97,18 @@ async function fetchClasses(): Promise<ClassesState> {
   return { kind: "ready", classes: payload.classes };
 }
 
-async function fetchLearners(page: number): Promise<ListState> {
+async function fetchLearners(
+  page: number,
+  status: LearnerStatus,
+): Promise<ListState> {
   let response: Response;
   try {
-    response = await fetch(`/api/staff/learners?page=${page}`, {
-      headers: { Accept: "application/json" },
-    });
+    response = await fetch(
+      `/api/staff/learners?page=${page}&status=${status}`,
+      {
+        headers: { Accept: "application/json" },
+      },
+    );
   } catch {
     return { kind: "error", message: NETWORK_MESSAGE };
   }
@@ -124,6 +142,36 @@ async function fetchLearners(page: number): Promise<ListState> {
   };
 }
 
+async function fetchDetail(
+  learnerId: string,
+): Promise<
+  | { readonly ok: true; readonly learner: LearnerDetail }
+  | { readonly ok: false; readonly message: string }
+> {
+  let response: Response;
+  try {
+    response = await fetch("/api/staff/learners/detail", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ learnerId }),
+    });
+  } catch {
+    return { ok: false, message: NETWORK_MESSAGE };
+  }
+  const payload = (await response.json().catch(() => ({}))) as {
+    readonly ok?: boolean;
+    readonly error?: string;
+    readonly learner?: LearnerDetail;
+  };
+  if (!response.ok || payload.ok !== true || !payload.learner) {
+    return {
+      ok: false,
+      message: payload.error ?? "The student's record could not be loaded.",
+    };
+  }
+  return { ok: true, learner: payload.learner };
+}
+
 function fullName(learner: LearnerSummary): string {
   return `${learner.firstName} ${learner.lastName}`.trim();
 }
@@ -134,12 +182,18 @@ export function LearnersClient({
   schoolName,
   canRead,
   canEnrol,
+  canCorrect,
+  canChangePlacement,
+  canManageClasses,
 }: {
   readonly email: string;
   readonly role: string;
   readonly schoolName: string | null;
   readonly canRead: boolean;
   readonly canEnrol: boolean;
+  readonly canCorrect: boolean;
+  readonly canChangePlacement: boolean;
+  readonly canManageClasses: boolean;
 }) {
   const router = useRouter();
 
@@ -148,6 +202,7 @@ export function LearnersClient({
   });
   const [listState, setListState] = useState<ListState>({ kind: "loading" });
   const [page, setPage] = useState(1);
+  const [statusFilter, setStatusFilter] = useState<LearnerStatus>("active");
   const [reloadKey, setReloadKey] = useState(0);
 
   const [form, setForm] = useState(EMPTY_FORM);
@@ -155,6 +210,22 @@ export function LearnersClient({
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState<EnrolSuccess | null>(null);
   const [signingOut, setSigningOut] = useState(false);
+
+  // One inline editor at a time, for one student.
+  const [editor, setEditor] = useState<RowEditor | null>(null);
+  const [detailState, setDetailState] = useState<
+    | { readonly kind: "loading" }
+    | { readonly kind: "ready"; readonly detail: LearnerDetail }
+    | { readonly kind: "error"; readonly message: string }
+  >({ kind: "loading" });
+  const [detailForm, setDetailForm] = useState(EMPTY_FORM);
+  const [editClassId, setEditClassId] = useState("");
+  const [rowBusyId, setRowBusyId] = useState<string | null>(null);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [rowError, setRowError] = useState<string | null>(null);
+  const [rowNotice, setRowNotice] = useState<string | null>(null);
+
+  const canManageRows = canCorrect || canChangePlacement;
 
   useEffect(() => {
     if (!canEnrol) {
@@ -178,7 +249,7 @@ export function LearnersClient({
     }
     let cancelled = false;
     void (async () => {
-      const next = await fetchLearners(page);
+      const next = await fetchLearners(page, statusFilter);
       if (!cancelled) {
         setListState(next);
       }
@@ -186,16 +257,34 @@ export function LearnersClient({
     return () => {
       cancelled = true;
     };
-  }, [canRead, page, reloadKey]);
+  }, [canRead, page, statusFilter, reloadKey]);
 
   function reloadList() {
     setListState({ kind: "loading" });
     setReloadKey((key) => key + 1);
   }
 
+  function closeEditor() {
+    setEditor(null);
+    setRowError(null);
+    setConfirmingId(null);
+  }
+
   function goToPage(next: number) {
+    closeEditor();
     setListState({ kind: "loading" });
     setPage(next);
+  }
+
+  function changeFilter(next: LearnerStatus) {
+    if (next === statusFilter) {
+      return;
+    }
+    closeEditor();
+    setRowNotice(null);
+    setListState({ kind: "loading" });
+    setPage(1);
+    setStatusFilter(parseLearnerStatusFilter(next));
   }
 
   function update<K extends keyof typeof EMPTY_FORM>(
@@ -203,6 +292,13 @@ export function LearnersClient({
     value: (typeof EMPTY_FORM)[K],
   ) {
     setForm((previous) => ({ ...previous, [key]: value }));
+  }
+
+  function updateDetail<K extends keyof typeof EMPTY_FORM>(
+    key: K,
+    value: (typeof EMPTY_FORM)[K],
+  ) {
+    setDetailForm((previous) => ({ ...previous, [key]: value }));
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -252,6 +348,199 @@ export function LearnersClient({
     }
   }
 
+  /** Opens the correction editor and loads the full record on demand. */
+  async function openDetails(learner: LearnerSummary) {
+    setRowNotice(null);
+    setRowError(null);
+    setConfirmingId(null);
+    setEditor({ learnerId: learner.id, mode: "details" });
+    setDetailState({ kind: "loading" });
+
+    const result = await fetchDetail(learner.id);
+    if (!result.ok) {
+      setDetailState({ kind: "error", message: result.message });
+      return;
+    }
+
+    const detail = result.learner;
+    setDetailState({ kind: "ready", detail });
+    setDetailForm({
+      firstName: detail.firstName,
+      lastName: detail.lastName,
+      registrationNumber: detail.registrationNumber,
+      gender: detail.gender as Gender,
+      dateOfBirth: detail.dateOfBirth,
+      residentialAddress: detail.residentialAddress,
+      guardianPhone: detail.guardianPhone,
+      guardianEmail: detail.guardianEmail ?? "",
+      classId: detail.classId ?? "",
+    });
+  }
+
+  function openClassChange(learner: LearnerSummary) {
+    setRowNotice(null);
+    setRowError(null);
+    setConfirmingId(null);
+    setEditClassId(learner.classId ?? "");
+    setEditor({ learnerId: learner.id, mode: "class" });
+  }
+
+  /**
+   * Saves a correction. Only fields that differ from the loaded record are
+   * sent, so an unrelated column is never touched and no empty audit event is
+   * written (the endpoint applies only the fields present in the body).
+   */
+  async function handleSaveDetails(detail: LearnerDetail) {
+    setRowError(null);
+    setRowNotice(null);
+
+    const payload: Record<string, unknown> = { learnerId: detail.id };
+    if (detailForm.registrationNumber !== detail.registrationNumber) {
+      payload.registrationNumber = detailForm.registrationNumber;
+    }
+    if (detailForm.firstName !== detail.firstName) {
+      payload.firstName = detailForm.firstName;
+    }
+    if (detailForm.lastName !== detail.lastName) {
+      payload.lastName = detailForm.lastName;
+    }
+    if (detailForm.gender !== detail.gender) {
+      payload.gender = detailForm.gender;
+    }
+    if (detailForm.dateOfBirth !== detail.dateOfBirth) {
+      payload.dateOfBirth = detailForm.dateOfBirth;
+    }
+    if (detailForm.residentialAddress !== detail.residentialAddress) {
+      payload.residentialAddress = detailForm.residentialAddress;
+    }
+    if (detailForm.guardianPhone !== detail.guardianPhone) {
+      payload.guardianPhone = detailForm.guardianPhone;
+    }
+    if (detailForm.guardianEmail !== (detail.guardianEmail ?? "")) {
+      payload.guardianEmail = detailForm.guardianEmail;
+    }
+
+    if (Object.keys(payload).length === 1) {
+      setRowNotice("No changes to save.");
+      return;
+    }
+
+    const parsed = parseLearnerCorrectionInput(payload);
+    if (!parsed.ok) {
+      setRowError(parsed.message);
+      return;
+    }
+
+    setRowBusyId(detail.id);
+    try {
+      const response = await fetch("/api/staff/learners/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(parsed.value),
+      });
+      const body = (await response.json().catch(() => ({}))) as {
+        readonly ok?: boolean;
+        readonly error?: string;
+      };
+
+      if (!response.ok || body.ok !== true) {
+        setRowError(body.error ?? "The student's record could not be saved.");
+        return;
+      }
+
+      closeEditor();
+      setRowNotice(`Saved changes for ${fullName(detail)}.`);
+      reloadList();
+    } catch {
+      setRowError(NETWORK_MESSAGE);
+    } finally {
+      setRowBusyId(null);
+    }
+  }
+
+  async function handleSaveClass(learner: LearnerSummary) {
+    setRowError(null);
+    setRowNotice(null);
+
+    if (editClassId === learner.classId) {
+      setRowNotice("That is already the student's class.");
+      return;
+    }
+    if (!editClassId) {
+      setRowError("Choose a class for the student.");
+      return;
+    }
+
+    setRowBusyId(learner.id);
+    try {
+      const response = await fetch("/api/staff/learners/placement", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ learnerId: learner.id, classId: editClassId }),
+      });
+      const body = (await response.json().catch(() => ({}))) as {
+        readonly ok?: boolean;
+        readonly error?: string;
+        readonly unchanged?: boolean;
+      };
+
+      if (!response.ok || body.ok !== true) {
+        setRowError(body.error ?? "The class change could not be saved.");
+        return;
+      }
+
+      closeEditor();
+      setRowNotice(
+        body.unchanged === true
+          ? "That is already the student's class."
+          : `Moved ${fullName(learner)} to the new class.`,
+      );
+      reloadList();
+    } catch {
+      setRowError(NETWORK_MESSAGE);
+    } finally {
+      setRowBusyId(null);
+    }
+  }
+
+  async function handleSetStatus(
+    learner: LearnerSummary,
+    status: LearnerStatus,
+  ) {
+    setRowError(null);
+    setRowNotice(null);
+    setRowBusyId(learner.id);
+    try {
+      const response = await fetch("/api/staff/learners/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ learnerId: learner.id, status }),
+      });
+      const body = (await response.json().catch(() => ({}))) as {
+        readonly ok?: boolean;
+        readonly error?: string;
+      };
+
+      if (!response.ok || body.ok !== true) {
+        setRowError(body.error ?? "The student's status could not be changed.");
+        return;
+      }
+
+      setConfirmingId(null);
+      closeEditor();
+      setRowNotice(
+        status === "inactive"
+          ? `${fullName(learner)} is now inactive.`
+          : `${fullName(learner)} is active again.`,
+      );
+      reloadList();
+    } catch {
+      setRowError(NETWORK_MESSAGE);
+    } finally {
+      setRowBusyId(null);
+    }
+  }
+
   async function handleSignOut() {
     setSigningOut(true);
     try {
@@ -290,6 +579,14 @@ export function LearnersClient({
             </span>
           </div>
           <div className="cluster cluster--end">
+            {canManageClasses ? (
+              <Link
+                className="btn btn--secondary btn--sm"
+                href="/dashboard/classes"
+              >
+                Classes
+              </Link>
+            ) : null}
             <Link className="btn btn--secondary btn--sm" href="/dashboard">
               Dashboard
             </Link>
@@ -352,6 +649,12 @@ export function LearnersClient({
                 <Alert variant="info">
                   Your school has no active classes yet, so a student cannot be
                   placed. A class must be created before enrolment.
+                  {canManageClasses ? (
+                    <>
+                      {" "}
+                      <Link href="/dashboard/classes">Create a class</Link>.
+                    </>
+                  ) : null}
                 </Alert>
               ) : null}
 
@@ -467,8 +770,10 @@ export function LearnersClient({
               title="Students"
               description={
                 listState.kind === "ready" && listState.total > 0
-                  ? `${listState.total} student${listState.total === 1 ? "" : "s"} in your school.`
-                  : "The students registered in your school."
+                  ? `${listState.total} ${statusFilter} student${listState.total === 1 ? "" : "s"} in your school.`
+                  : statusFilter === "inactive"
+                    ? "No inactive students. Deactivated records stay here for lookup and reactivation."
+                    : "The students registered in your school."
               }
               actions={
                 <Button
@@ -481,6 +786,30 @@ export function LearnersClient({
                 </Button>
               }
             />
+            <CardBody className="cluster">
+              <span className="muted">Show:</span>
+              <Button
+                variant={statusFilter === "active" ? "primary" : "secondary"}
+                size="sm"
+                aria-pressed={statusFilter === "active"}
+                onClick={() => changeFilter("active")}
+              >
+                Active
+              </Button>
+              <Button
+                variant={statusFilter === "inactive" ? "primary" : "secondary"}
+                size="sm"
+                aria-pressed={statusFilter === "inactive"}
+                onClick={() => changeFilter("inactive")}
+              >
+                Inactive
+              </Button>
+            </CardBody>
+            {rowNotice ? (
+              <CardBody>
+                <Alert variant="success">{rowNotice}</Alert>
+              </CardBody>
+            ) : null}
             {listState.kind === "error" ? (
               <CardBody>
                 <Alert variant="error">{listState.message}</Alert>
@@ -494,29 +823,301 @@ export function LearnersClient({
             ) : listState.learners.length === 0 ? (
               <CardBody>
                 <p className="muted">
-                  No students yet. Register the first one above.
+                  {statusFilter === "inactive"
+                    ? "No inactive students."
+                    : "No students yet. Register the first one above."}
                 </p>
               </CardBody>
             ) : (
               <>
                 <ul className="record-list">
-                  {listState.learners.map((learner) => (
-                    <li className="record" key={learner.id}>
-                      <div className="record__main">
-                        <p className="record__title">{fullName(learner)}</p>
-                        <p className="record__meta">
-                          <span className={`badge badge--${learner.status}`}>
-                            {learner.status === "active"
-                              ? "Enrolled"
-                              : "Inactive"}
-                          </span>
-                          <span>{learner.className ?? "No class yet"}</span>
-                          <span>{learner.registrationNumber}</span>
-                          <span className="mono">{learner.username}</span>
-                        </p>
-                      </div>
-                    </li>
-                  ))}
+                  {listState.learners.map((learner) => {
+                    const editing =
+                      editor?.learnerId === learner.id ? editor : null;
+                    const active = learner.status === "active";
+
+                    return (
+                      <li className="record" key={learner.id}>
+                        <div className="record__main">
+                          {editing?.mode === "details" ? (
+                            <div className="stack stack--sm">
+                              {detailState.kind === "loading" ? (
+                                <p className="muted" role="status">
+                                  Loading {fullName(learner)}…
+                                </p>
+                              ) : detailState.kind === "error" ? (
+                                <Alert variant="error">
+                                  {detailState.message}
+                                </Alert>
+                              ) : (
+                                <form
+                                  className="form-grid"
+                                  onSubmit={(event) => {
+                                    event.preventDefault();
+                                    void handleSaveDetails(detailState.detail);
+                                  }}
+                                  noValidate
+                                >
+                                  <TextField
+                                    label="First name"
+                                    name={`firstName-${learner.id}`}
+                                    required
+                                    value={detailForm.firstName}
+                                    onChange={(event) =>
+                                      updateDetail(
+                                        "firstName",
+                                        event.target.value,
+                                      )
+                                    }
+                                  />
+                                  <TextField
+                                    label="Last name"
+                                    name={`lastName-${learner.id}`}
+                                    required
+                                    value={detailForm.lastName}
+                                    onChange={(event) =>
+                                      updateDetail(
+                                        "lastName",
+                                        event.target.value,
+                                      )
+                                    }
+                                  />
+                                  <TextField
+                                    label="Registration number"
+                                    name={`reg-${learner.id}`}
+                                    required
+                                    value={detailForm.registrationNumber}
+                                    onChange={(event) =>
+                                      updateDetail(
+                                        "registrationNumber",
+                                        event.target.value,
+                                      )
+                                    }
+                                  />
+                                  <SelectField
+                                    label="Gender"
+                                    name={`gender-${learner.id}`}
+                                    required
+                                    options={GENDER_OPTIONS}
+                                    value={detailForm.gender}
+                                    onChange={(event) =>
+                                      updateDetail(
+                                        "gender",
+                                        event.target.value as Gender | "",
+                                      )
+                                    }
+                                  />
+                                  <TextField
+                                    label="Date of birth"
+                                    name={`dob-${learner.id}`}
+                                    type="date"
+                                    required
+                                    value={detailForm.dateOfBirth}
+                                    onChange={(event) =>
+                                      updateDetail(
+                                        "dateOfBirth",
+                                        event.target.value,
+                                      )
+                                    }
+                                  />
+                                  <TextField
+                                    label="Residential address"
+                                    name={`address-${learner.id}`}
+                                    required
+                                    value={detailForm.residentialAddress}
+                                    onChange={(event) =>
+                                      updateDetail(
+                                        "residentialAddress",
+                                        event.target.value,
+                                      )
+                                    }
+                                  />
+                                  <TextField
+                                    label="Guardian phone"
+                                    name={`phone-${learner.id}`}
+                                    type="tel"
+                                    required
+                                    value={detailForm.guardianPhone}
+                                    onChange={(event) =>
+                                      updateDetail(
+                                        "guardianPhone",
+                                        event.target.value,
+                                      )
+                                    }
+                                  />
+                                  <TextField
+                                    label="Guardian email (optional)"
+                                    name={`email-${learner.id}`}
+                                    type="email"
+                                    value={detailForm.guardianEmail}
+                                    onChange={(event) =>
+                                      updateDetail(
+                                        "guardianEmail",
+                                        event.target.value,
+                                      )
+                                    }
+                                  />
+                                  <p className="muted">
+                                    The username{" "}
+                                    <span className="mono">
+                                      {learner.username}
+                                    </span>{" "}
+                                    is the student&rsquo;s sign-in name and does
+                                    not change.
+                                  </p>
+                                  <div className="form-grid__actions cluster">
+                                    <Button
+                                      type="submit"
+                                      size="sm"
+                                      loading={rowBusyId === learner.id}
+                                    >
+                                      Save changes
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={closeEditor}
+                                    >
+                                      Cancel
+                                    </Button>
+                                  </div>
+                                </form>
+                              )}
+                            </div>
+                          ) : editing?.mode === "class" ? (
+                            <div className="stack stack--sm">
+                              <p className="record__title">
+                                {fullName(learner)}
+                              </p>
+                              <SelectField
+                                label="New class"
+                                name={`class-${learner.id}`}
+                                options={classOptions}
+                                value={editClassId}
+                                disabled={
+                                  classesState.kind !== "ready" || noClasses
+                                }
+                                onChange={(event) =>
+                                  setEditClassId(event.target.value)
+                                }
+                              />
+                              <div className="cluster">
+                                <Button
+                                  size="sm"
+                                  loading={rowBusyId === learner.id}
+                                  disabled={
+                                    classesState.kind !== "ready" || noClasses
+                                  }
+                                  onClick={() => handleSaveClass(learner)}
+                                >
+                                  Save class
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={closeEditor}
+                                >
+                                  Cancel
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <p className="record__title">
+                                {fullName(learner)}
+                              </p>
+                              <p className="record__meta">
+                                <span
+                                  className={`badge badge--${active ? "active" : "inactive"}`}
+                                >
+                                  {active ? "Enrolled" : "Inactive"}
+                                </span>
+                                <span>
+                                  {learner.className ?? "No class yet"}
+                                </span>
+                                <span>{learner.registrationNumber}</span>
+                                <span className="mono">{learner.username}</span>
+                              </p>
+                            </>
+                          )}
+                          {editing && rowError ? (
+                            <div className="stack stack--sm">
+                              <Alert variant="error">{rowError}</Alert>
+                            </div>
+                          ) : null}
+                        </div>
+                        {canManageRows && !editing ? (
+                          <div className="record__actions">
+                            {canCorrect ? (
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => void openDetails(learner)}
+                              >
+                                Edit
+                              </Button>
+                            ) : null}
+                            {canChangePlacement && active ? (
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => openClassChange(learner)}
+                              >
+                                Change class
+                              </Button>
+                            ) : null}
+                            {canCorrect ? (
+                              active ? (
+                                confirmingId === learner.id ? (
+                                  <>
+                                    <Button
+                                      variant="danger"
+                                      size="sm"
+                                      loading={rowBusyId === learner.id}
+                                      onClick={() =>
+                                        handleSetStatus(learner, "inactive")
+                                      }
+                                    >
+                                      Confirm deactivate
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => setConfirmingId(null)}
+                                    >
+                                      Cancel
+                                    </Button>
+                                  </>
+                                ) : (
+                                  <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    onClick={() => {
+                                      setConfirmingId(learner.id);
+                                      setRowError(null);
+                                    }}
+                                  >
+                                    Deactivate
+                                  </Button>
+                                )
+                              ) : (
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  loading={rowBusyId === learner.id}
+                                  onClick={() =>
+                                    handleSetStatus(learner, "active")
+                                  }
+                                >
+                                  Reactivate
+                                </Button>
+                              )
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </li>
+                    );
+                  })}
                 </ul>
                 {totalPages > 1 ? (
                   <div className="card__footer cluster cluster--end">

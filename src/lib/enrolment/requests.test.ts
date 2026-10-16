@@ -1,8 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  parseClassCreateInput,
+  parseClassUpdateInput,
   parseEnrolmentInput,
+  parseLearnerCorrectionInput,
+  parseLearnerIdInput,
+  parseLearnerStatusFilter,
+  parseLearnerStatusInput,
   parsePageParam,
+  parsePlacementChangeInput,
   utcToday,
   LEARNER_PAGE_SIZE,
 } from "./requests";
@@ -154,5 +161,171 @@ describe("paging constant", () => {
   it("keeps a bounded page size", () => {
     expect(LEARNER_PAGE_SIZE).toBeGreaterThan(0);
     expect(LEARNER_PAGE_SIZE).toBeLessThanOrEqual(100);
+  });
+});
+
+const LEARNER_ID = "9c1e2d3b-4a5c-6d7e-8f90-1a2b3c4d5e6f";
+
+describe("parseLearnerStatusFilter", () => {
+  it("defaults to the active view for a missing or unrecognised value", () => {
+    expect(parseLearnerStatusFilter(null)).toBe("active");
+    expect(parseLearnerStatusFilter("")).toBe("active");
+    expect(parseLearnerStatusFilter("all")).toBe("active");
+    expect(parseLearnerStatusFilter("ACTIVE")).toBe("active");
+  });
+
+  it("accepts the explicit inactive view", () => {
+    expect(parseLearnerStatusFilter("inactive")).toBe("inactive");
+  });
+});
+
+describe("parseClassCreateInput", () => {
+  it("accepts and trims a class name", () => {
+    const result = parseClassCreateInput({ name: "  Primary 1  " });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.name).toBe("Primary 1");
+  });
+
+  it("rejects a blank or over-long name and a non-object body", () => {
+    expect(parseClassCreateInput({ name: "   " }).ok).toBe(false);
+    expect(parseClassCreateInput({ name: "x".repeat(81) }).ok).toBe(false);
+    expect(parseClassCreateInput({}).ok).toBe(false);
+    expect(parseClassCreateInput(null).ok).toBe(false);
+  });
+});
+
+describe("parseClassUpdateInput", () => {
+  it("accepts a rename", () => {
+    const result = parseClassUpdateInput({
+      classId: CLASS_ID,
+      name: "Primary 2",
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.name).toBe("Primary 2");
+    expect(result.value.isActive).toBeUndefined();
+  });
+
+  it("accepts an active flag", () => {
+    const result = parseClassUpdateInput({
+      classId: CLASS_ID,
+      isActive: false,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.isActive).toBe(false);
+  });
+
+  it("requires at least one change", () => {
+    expect(parseClassUpdateInput({ classId: CLASS_ID }).ok).toBe(false);
+  });
+
+  it("rejects a bad class id or a non-boolean flag", () => {
+    expect(parseClassUpdateInput({ classId: "primary-1", name: "X" }).ok).toBe(
+      false,
+    );
+    expect(
+      parseClassUpdateInput({ classId: CLASS_ID, isActive: "yes" }).ok,
+    ).toBe(false);
+  });
+});
+
+describe("parseLearnerCorrectionInput", () => {
+  it("accepts a single corrected field", () => {
+    const result = parseLearnerCorrectionInput({
+      learnerId: LEARNER_ID,
+      firstName: "  Ama  ",
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.firstName).toBe("Ama");
+    expect(result.value.lastName).toBeUndefined();
+  });
+
+  it("treats an explicit null guardian email as clearing it", () => {
+    const result = parseLearnerCorrectionInput({
+      learnerId: LEARNER_ID,
+      guardianEmail: null,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.guardianEmail).toBeNull();
+  });
+
+  it("treats a blank guardian email as clearing it", () => {
+    const result = parseLearnerCorrectionInput({
+      learnerId: LEARNER_ID,
+      guardianEmail: "   ",
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.guardianEmail).toBeNull();
+  });
+
+  it("requires at least one field to change", () => {
+    expect(parseLearnerCorrectionInput({ learnerId: LEARNER_ID }).ok).toBe(
+      false,
+    );
+  });
+
+  it("rejects a bad learner id and an invalid field value", () => {
+    expect(
+      parseLearnerCorrectionInput({ learnerId: "abc", firstName: "Ama" }).ok,
+    ).toBe(false);
+    expect(
+      parseLearnerCorrectionInput({ learnerId: LEARNER_ID, gender: "unknown" })
+        .ok,
+    ).toBe(false);
+    expect(
+      parseLearnerCorrectionInput({
+        learnerId: LEARNER_ID,
+        dateOfBirth: "2999-01-01",
+      }).ok,
+    ).toBe(false);
+  });
+});
+
+describe("parseLearnerStatusInput", () => {
+  it("accepts the two learner states", () => {
+    expect(
+      parseLearnerStatusInput({ learnerId: LEARNER_ID, status: "inactive" }).ok,
+    ).toBe(true);
+    expect(
+      parseLearnerStatusInput({ learnerId: LEARNER_ID, status: "active" }).ok,
+    ).toBe(true);
+  });
+
+  it("rejects any other status", () => {
+    expect(
+      parseLearnerStatusInput({ learnerId: LEARNER_ID, status: "removed" }).ok,
+    ).toBe(false);
+    expect(parseLearnerStatusInput({ learnerId: LEARNER_ID }).ok).toBe(false);
+  });
+});
+
+describe("parseLearnerIdInput", () => {
+  it("accepts a UUID and rejects anything else", () => {
+    expect(parseLearnerIdInput({ learnerId: LEARNER_ID }).ok).toBe(true);
+    expect(parseLearnerIdInput({ learnerId: "nope" }).ok).toBe(false);
+    expect(parseLearnerIdInput({}).ok).toBe(false);
+  });
+});
+
+describe("parsePlacementChangeInput", () => {
+  it("accepts a learner and class pair", () => {
+    const result = parsePlacementChangeInput({
+      learnerId: LEARNER_ID,
+      classId: CLASS_ID,
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("rejects a missing or malformed id", () => {
+    expect(
+      parsePlacementChangeInput({ learnerId: LEARNER_ID, classId: "one" }).ok,
+    ).toBe(false);
+    expect(parsePlacementChangeInput({ learnerId: LEARNER_ID }).ok).toBe(false);
+    expect(parsePlacementChangeInput({ classId: CLASS_ID }).ok).toBe(false);
   });
 });

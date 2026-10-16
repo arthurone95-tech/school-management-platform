@@ -63,6 +63,8 @@ Learner records, contact details, assessment results, attendance histories, and 
 
 Avoid collecting medical, disability, biometric, financial, or other particularly sensitive information unless a defined feature and valid basis require it and appropriate safeguards have been approved.
 
+**Applied to the enrolment slice (D-027, D-028).** The school's paged student list returns identifiers and the current class only (`GET /api/staff/learners`); a child's residential address and guardian contact details are read **one learner at a time**, for the correction form, behind the same `learner.read` permission (`POST /api/staff/learners/detail`). Listing a school therefore does not disclose every child's address. The internal student id travels in a `POST` body rather than a URL, so it does not reach a server or proxy access log (section 11).
+
 ## 5. Ghanaian Legal and Regulatory Review
 
 Before production launch, assess the applicability of the Ghana Data Protection Act, 2012 (Act 843), and any other relevant legal or regulatory requirements.

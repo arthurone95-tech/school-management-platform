@@ -10,8 +10,9 @@ export default function HomePage() {
         </Link>
       </p>
       <p>
-        The secure-first foundation (phase 1) is implemented and verified
-        against the non-production Supabase project. Current capabilities:
+        The secure-first foundation and the first school workflows are
+        implemented and verified against the non-production Supabase project.
+        Current capabilities:
       </p>
       <ul>
         <li>
@@ -27,15 +28,26 @@ export default function HomePage() {
           <code>/join</code>.
         </li>
         <li>
+          <strong>Enrolment:</strong> an administrator registers a student with
+          their class placement, corrects a record, deactivates or reactivates a
+          student, and changes a class placement — through the
+          administrator-only <code>/dashboard/learners</code> page.
+        </li>
+        <li>
+          <strong>Classes:</strong> an administrator creates, renames,
+          deactivates and reactivates the school&apos;s classes through{" "}
+          <code>/dashboard/classes</code>.
+        </li>
+        <li>
           <strong>School isolation:</strong> access is enforced by Row Level
           Security and server-side checks; an account can never reach another
           school&apos;s data.
         </li>
       </ul>
       <p>
-        The staff-facing interface (dashboard and sign-in pages) is the next
-        phase and is not available yet. Until then the flows are exercised
-        through the API and the live test suites under <code>tests/live/</code>.
+        The administrator dashboard (<code>/dashboard</code>) and the sign-in
+        page (<code>/sign-in</code>) are available, and every action is also
+        exercised through the live test suites under <code>tests/live/</code>.
       </p>
     </main>
   );

@@ -106,6 +106,116 @@ function trimmedLengthValid(value: string, max: number): boolean {
   return trimmed.length >= 1 && trimmed.length <= max;
 }
 
+/** Longest class name accepted; mirrors `public.classes.name` (migration 0001). */
+export const CLASS_NAME_MAX_LENGTH = 80;
+
+/** The learner states allowed by `public.learners.status` (migration 0001, 5.2). */
+export const LEARNER_STATUSES = ["active", "inactive"] as const;
+export type LearnerStatus = (typeof LEARNER_STATUSES)[number];
+
+export function isLearnerStatus(value: string): value is LearnerStatus {
+  return (LEARNER_STATUSES as readonly string[]).includes(value);
+}
+
+const FIRST_NAME_MESSAGE = "Enter the student's first name.";
+const LAST_NAME_MESSAGE = "Enter the student's last name.";
+const CLASS_ID_MESSAGE = "Choose a class for the student.";
+const LEARNER_ID_MESSAGE = "Invalid request body.";
+
+/**
+ * Field-level validators shared by the enrolment and correction parsers, so the
+ * two entry points into a learner record cannot drift apart (AGENTS.md 11).
+ * Each returns the normalised value or the message to show the user.
+ */
+
+function checkRegistrationNumber(raw: string): ParseResult<string> {
+  if (!isValidRegistrationNumber(raw)) {
+    return {
+      ok: false,
+      message: `Enter a registration number (1–${REGISTRATION_NUMBER_MAX_LENGTH} characters).`,
+    };
+  }
+  return { ok: true, value: normaliseRegistrationNumber(raw) };
+}
+
+function checkName(raw: string, message: string): ParseResult<string> {
+  if (!trimmedLengthValid(raw, NAME_MAX_LENGTH)) {
+    return { ok: false, message };
+  }
+  return { ok: true, value: raw.trim() };
+}
+
+function checkGender(raw: string): ParseResult<Gender> {
+  if (!isGender(raw)) {
+    return { ok: false, message: "Choose the student's gender." };
+  }
+  return { ok: true, value: raw };
+}
+
+function checkDateOfBirth(raw: string, now: Date): ParseResult<string> {
+  if (!isRealCalendarDate(raw)) {
+    return {
+      ok: false,
+      message: "Enter a valid date of birth in YYYY-MM-DD form.",
+    };
+  }
+  if (raw > utcToday(now)) {
+    return { ok: false, message: "The date of birth cannot be in the future." };
+  }
+  if (raw < EARLIEST_DATE_OF_BIRTH) {
+    return {
+      ok: false,
+      message: `Enter a date of birth on or after ${EARLIEST_DATE_OF_BIRTH}.`,
+    };
+  }
+  return { ok: true, value: raw };
+}
+
+function checkAddress(raw: string): ParseResult<string> {
+  if (!trimmedLengthValid(raw, ADDRESS_MAX_LENGTH)) {
+    return {
+      ok: false,
+      message: `Enter the student's residential address (1–${ADDRESS_MAX_LENGTH} characters).`,
+    };
+  }
+  return { ok: true, value: raw.trim() };
+}
+
+function checkGuardianPhone(raw: string): ParseResult<string> {
+  if (!trimmedLengthValid(raw, GUARDIAN_PHONE_MAX_LENGTH)) {
+    return {
+      ok: false,
+      message: `Enter a guardian phone number (1–${GUARDIAN_PHONE_MAX_LENGTH} characters).`,
+    };
+  }
+  return { ok: true, value: raw.trim() };
+}
+
+/** Optional: an absent, blank or whitespace-only value means "not provided". */
+function checkOptionalGuardianEmail(
+  raw: string | null,
+): ParseResult<string | null> {
+  if (raw === null || raw.trim().length === 0) {
+    return { ok: true, value: null };
+  }
+  const normalised = normaliseEmail(raw);
+  if (!isEmailLike(normalised)) {
+    return {
+      ok: false,
+      message: "Enter a valid guardian email address, or leave it blank.",
+    };
+  }
+  return { ok: true, value: normalised };
+}
+
+function checkUuid(raw: string, message: string): ParseResult<string> {
+  const trimmed = raw.trim();
+  if (!UUID_PATTERN.test(trimmed)) {
+    return { ok: false, message };
+  }
+  return { ok: true, value: trimmed };
+}
+
 /**
  * Parses and validates an enrolment body. `now` is injectable so the
  * "date of birth must not be in the future" rule can be tested deterministically.
@@ -118,93 +228,83 @@ export function parseEnrolmentInput(
     return { ok: false, message: "Invalid request body." };
   }
 
-  const rawRegistration = readString(body, "registrationNumber");
-  if (rawRegistration === null || !isValidRegistrationNumber(rawRegistration)) {
-    return {
-      ok: false,
-      message: `Enter a registration number (1–${REGISTRATION_NUMBER_MAX_LENGTH} characters).`,
-    };
+  const registration = checkRegistrationNumber(
+    readString(body, "registrationNumber") ?? "",
+  );
+  if (!registration.ok) {
+    return registration;
   }
 
-  const firstName = readString(body, "firstName") ?? "";
-  if (!trimmedLengthValid(firstName, NAME_MAX_LENGTH)) {
-    return { ok: false, message: "Enter the student's first name." };
+  const firstName = checkName(
+    readString(body, "firstName") ?? "",
+    FIRST_NAME_MESSAGE,
+  );
+  if (!firstName.ok) {
+    return firstName;
   }
 
-  const lastName = readString(body, "lastName") ?? "";
-  if (!trimmedLengthValid(lastName, NAME_MAX_LENGTH)) {
-    return { ok: false, message: "Enter the student's last name." };
+  const lastName = checkName(
+    readString(body, "lastName") ?? "",
+    LAST_NAME_MESSAGE,
+  );
+  if (!lastName.ok) {
+    return lastName;
   }
 
-  const gender = readString(body, "gender");
-  if (gender === null || !isGender(gender)) {
-    return { ok: false, message: "Choose the student's gender." };
+  const gender = checkGender(readString(body, "gender") ?? "");
+  if (!gender.ok) {
+    return gender;
   }
 
-  const dateOfBirth = readString(body, "dateOfBirth") ?? "";
-  if (!isRealCalendarDate(dateOfBirth)) {
-    return {
-      ok: false,
-      message: "Enter a valid date of birth in YYYY-MM-DD form.",
-    };
-  }
-  if (dateOfBirth > utcToday(now)) {
-    return { ok: false, message: "The date of birth cannot be in the future." };
-  }
-  if (dateOfBirth < EARLIEST_DATE_OF_BIRTH) {
-    return {
-      ok: false,
-      message: `Enter a date of birth on or after ${EARLIEST_DATE_OF_BIRTH}.`,
-    };
+  const dateOfBirth = checkDateOfBirth(
+    readString(body, "dateOfBirth") ?? "",
+    now,
+  );
+  if (!dateOfBirth.ok) {
+    return dateOfBirth;
   }
 
-  const residentialAddress = readString(body, "residentialAddress") ?? "";
-  if (!trimmedLengthValid(residentialAddress, ADDRESS_MAX_LENGTH)) {
-    return {
-      ok: false,
-      message: `Enter the student's residential address (1–${ADDRESS_MAX_LENGTH} characters).`,
-    };
+  const residentialAddress = checkAddress(
+    readString(body, "residentialAddress") ?? "",
+  );
+  if (!residentialAddress.ok) {
+    return residentialAddress;
   }
 
-  const guardianPhone = readString(body, "guardianPhone") ?? "";
-  if (!trimmedLengthValid(guardianPhone, GUARDIAN_PHONE_MAX_LENGTH)) {
-    return {
-      ok: false,
-      message: `Enter a guardian phone number (1–${GUARDIAN_PHONE_MAX_LENGTH} characters).`,
-    };
+  const guardianPhone = checkGuardianPhone(
+    readString(body, "guardianPhone") ?? "",
+  );
+  if (!guardianPhone.ok) {
+    return guardianPhone;
   }
 
-  // Optional: an absent, blank or whitespace-only value means "not provided".
-  const rawEmail = readString(body, "guardianEmail");
-  let guardianEmail: string | null = null;
-  if (rawEmail !== null && rawEmail.trim().length > 0) {
-    const normalised = normaliseEmail(rawEmail);
-    if (!isEmailLike(normalised)) {
-      return {
-        ok: false,
-        message: "Enter a valid guardian email address, or leave it blank.",
-      };
-    }
-    guardianEmail = normalised;
+  const guardianEmail = checkOptionalGuardianEmail(
+    readString(body, "guardianEmail"),
+  );
+  if (!guardianEmail.ok) {
+    return guardianEmail;
   }
 
-  const classId = readString(body, "classId");
-  if (classId === null || !UUID_PATTERN.test(classId.trim())) {
-    return { ok: false, message: "Choose a class for the student." };
+  const classId = checkUuid(
+    readString(body, "classId") ?? "",
+    CLASS_ID_MESSAGE,
+  );
+  if (!classId.ok) {
+    return classId;
   }
 
   return {
     ok: true,
     value: {
-      registrationNumber: normaliseRegistrationNumber(rawRegistration),
-      firstName: firstName.trim(),
-      lastName: lastName.trim(),
-      gender,
-      dateOfBirth,
-      residentialAddress: residentialAddress.trim(),
-      guardianPhone: guardianPhone.trim(),
-      guardianEmail,
-      classId: classId.trim(),
+      registrationNumber: registration.value,
+      firstName: firstName.value,
+      lastName: lastName.value,
+      gender: gender.value,
+      dateOfBirth: dateOfBirth.value,
+      residentialAddress: residentialAddress.value,
+      guardianPhone: guardianPhone.value,
+      guardianEmail: guardianEmail.value,
+      classId: classId.value,
     },
   };
 }
@@ -223,4 +323,306 @@ export function parsePageParam(raw: string | null): number {
     return 1;
   }
   return Math.min(parsed, 10000);
+}
+
+/**
+ * Parses the `status` filter for the learner list. Anything that is not exactly
+ * `inactive` means the routine, active-only view, so a missing or hostile value
+ * cannot accidentally widen the query to every record (D-023: inactive records
+ * are not part of routine operational views).
+ */
+export function parseLearnerStatusFilter(raw: string | null): LearnerStatus {
+  return raw === "inactive" ? "inactive" : "active";
+}
+
+export interface ClassCreateInput {
+  readonly name: string;
+}
+
+export interface ClassUpdateInput {
+  readonly classId: string;
+  readonly name?: string;
+  readonly isActive?: boolean;
+}
+
+/** `undefined` means "leave unchanged"; an explicit `null` clears an optional value. */
+export interface LearnerCorrectionInput {
+  readonly learnerId: string;
+  readonly registrationNumber?: string;
+  readonly firstName?: string;
+  readonly lastName?: string;
+  readonly gender?: Gender;
+  readonly dateOfBirth?: string;
+  readonly residentialAddress?: string;
+  readonly guardianPhone?: string;
+  readonly guardianEmail?: string | null;
+}
+
+export interface LearnerStatusInput {
+  readonly learnerId: string;
+  readonly status: LearnerStatus;
+}
+
+export interface PlacementChangeInput {
+  readonly learnerId: string;
+  readonly classId: string;
+}
+
+const CLASS_NAME_MESSAGE = `Enter a class name (1–${CLASS_NAME_MAX_LENGTH} characters).`;
+
+function checkClassName(raw: string): ParseResult<string> {
+  if (!trimmedLengthValid(raw, CLASS_NAME_MAX_LENGTH)) {
+    return { ok: false, message: CLASS_NAME_MESSAGE };
+  }
+  return { ok: true, value: raw.trim() };
+}
+
+/** Parses a "create a class" body: a required, school-unique name. */
+export function parseClassCreateInput(
+  body: unknown,
+): ParseResult<ClassCreateInput> {
+  if (!isRecord(body)) {
+    return { ok: false, message: "Invalid request body." };
+  }
+  const name = checkClassName(readString(body, "name") ?? "");
+  if (!name.ok) {
+    return name;
+  }
+  return { ok: true, value: { name: name.value } };
+}
+
+/**
+ * Parses a "change a class" body: the class id plus at least one of a new name
+ * or a new active flag. Omitting both is rejected so an empty request cannot
+ * silently succeed.
+ */
+export function parseClassUpdateInput(
+  body: unknown,
+): ParseResult<ClassUpdateInput> {
+  if (!isRecord(body)) {
+    return { ok: false, message: "Invalid request body." };
+  }
+
+  const classId = checkUuid(
+    readString(body, "classId") ?? "",
+    "Invalid request body.",
+  );
+  if (!classId.ok) {
+    return classId;
+  }
+
+  let name: string | undefined;
+  if ("name" in body) {
+    const checked = checkClassName(readString(body, "name") ?? "");
+    if (!checked.ok) {
+      return checked;
+    }
+    name = checked.value;
+  }
+
+  let isActive: boolean | undefined;
+  if ("isActive" in body) {
+    const raw = body.isActive;
+    if (typeof raw !== "boolean") {
+      return { ok: false, message: "Invalid request body." };
+    }
+    isActive = raw;
+  }
+
+  if (name === undefined && isActive === undefined) {
+    return { ok: false, message: "Provide a new name or a new status." };
+  }
+
+  return { ok: true, value: { classId: classId.value, name, isActive } };
+}
+
+/**
+ * Parses a correction body: the learner id plus at least one field to change.
+ * Fields that are absent are left untouched by the update, so a partial
+ * correction cannot blank unrelated columns.
+ */
+export function parseLearnerCorrectionInput(
+  body: unknown,
+  now: Date = new Date(),
+): ParseResult<LearnerCorrectionInput> {
+  if (!isRecord(body)) {
+    return { ok: false, message: "Invalid request body." };
+  }
+
+  const learnerId = checkUuid(
+    readString(body, "learnerId") ?? "",
+    LEARNER_ID_MESSAGE,
+  );
+  if (!learnerId.ok) {
+    return learnerId;
+  }
+
+  const value: {
+    learnerId: string;
+    registrationNumber?: string;
+    firstName?: string;
+    lastName?: string;
+    gender?: Gender;
+    dateOfBirth?: string;
+    residentialAddress?: string;
+    guardianPhone?: string;
+    guardianEmail?: string | null;
+  } = { learnerId: learnerId.value };
+
+  if ("registrationNumber" in body) {
+    const checked = checkRegistrationNumber(
+      readString(body, "registrationNumber") ?? "",
+    );
+    if (!checked.ok) {
+      return checked;
+    }
+    value.registrationNumber = checked.value;
+  }
+
+  if ("firstName" in body) {
+    const checked = checkName(
+      readString(body, "firstName") ?? "",
+      FIRST_NAME_MESSAGE,
+    );
+    if (!checked.ok) {
+      return checked;
+    }
+    value.firstName = checked.value;
+  }
+
+  if ("lastName" in body) {
+    const checked = checkName(
+      readString(body, "lastName") ?? "",
+      LAST_NAME_MESSAGE,
+    );
+    if (!checked.ok) {
+      return checked;
+    }
+    value.lastName = checked.value;
+  }
+
+  if ("gender" in body) {
+    const checked = checkGender(readString(body, "gender") ?? "");
+    if (!checked.ok) {
+      return checked;
+    }
+    value.gender = checked.value;
+  }
+
+  if ("dateOfBirth" in body) {
+    const checked = checkDateOfBirth(
+      readString(body, "dateOfBirth") ?? "",
+      now,
+    );
+    if (!checked.ok) {
+      return checked;
+    }
+    value.dateOfBirth = checked.value;
+  }
+
+  if ("residentialAddress" in body) {
+    const checked = checkAddress(readString(body, "residentialAddress") ?? "");
+    if (!checked.ok) {
+      return checked;
+    }
+    value.residentialAddress = checked.value;
+  }
+
+  if ("guardianPhone" in body) {
+    const checked = checkGuardianPhone(readString(body, "guardianPhone") ?? "");
+    if (!checked.ok) {
+      return checked;
+    }
+    value.guardianPhone = checked.value;
+  }
+
+  if ("guardianEmail" in body) {
+    const checked = checkOptionalGuardianEmail(
+      readString(body, "guardianEmail"),
+    );
+    if (!checked.ok) {
+      return checked;
+    }
+    value.guardianEmail = checked.value;
+  }
+
+  const changed = Object.keys(value).filter((key) => key !== "learnerId");
+  if (changed.length === 0) {
+    return { ok: false, message: "Provide at least one field to change." };
+  }
+
+  return { ok: true, value };
+}
+
+/** Parses an activation/deactivation body for one learner. */
+export function parseLearnerStatusInput(
+  body: unknown,
+): ParseResult<LearnerStatusInput> {
+  if (!isRecord(body)) {
+    return { ok: false, message: "Invalid request body." };
+  }
+
+  const learnerId = checkUuid(
+    readString(body, "learnerId") ?? "",
+    LEARNER_ID_MESSAGE,
+  );
+  if (!learnerId.ok) {
+    return learnerId;
+  }
+
+  const status = readString(body, "status") ?? "";
+  if (!isLearnerStatus(status)) {
+    return { ok: false, message: "Choose a valid student status." };
+  }
+
+  return { ok: true, value: { learnerId: learnerId.value, status } };
+}
+
+/** Parses a body that names one learner, e.g. a detail read. */
+export function parseLearnerIdInput(
+  body: unknown,
+): ParseResult<{ readonly learnerId: string }> {
+  if (!isRecord(body)) {
+    return { ok: false, message: "Invalid request body." };
+  }
+
+  const learnerId = checkUuid(
+    readString(body, "learnerId") ?? "",
+    LEARNER_ID_MESSAGE,
+  );
+  if (!learnerId.ok) {
+    return learnerId;
+  }
+
+  return { ok: true, value: { learnerId: learnerId.value } };
+}
+
+/** Parses a "change class placement" body: one learner and one target class. */
+export function parsePlacementChangeInput(
+  body: unknown,
+): ParseResult<PlacementChangeInput> {
+  if (!isRecord(body)) {
+    return { ok: false, message: "Invalid request body." };
+  }
+
+  const learnerId = checkUuid(
+    readString(body, "learnerId") ?? "",
+    LEARNER_ID_MESSAGE,
+  );
+  if (!learnerId.ok) {
+    return learnerId;
+  }
+
+  const classId = checkUuid(
+    readString(body, "classId") ?? "",
+    CLASS_ID_MESSAGE,
+  );
+  if (!classId.ok) {
+    return classId;
+  }
+
+  return {
+    ok: true,
+    value: { learnerId: learnerId.value, classId: classId.value },
+  };
 }

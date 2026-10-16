@@ -514,7 +514,8 @@ a {
   color: var(--muted-foreground);
 }
 
-.invitation__actions {
+.invitation__actions,
+.record__actions {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
@@ -524,6 +525,18 @@ a {
 .card__footer {
   padding: 0.875rem 1.25rem;
   border-top: 1px solid var(--border);
+}
+
+/* A single field and its submit button on one line (class creation). */
+.inline-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+.inline-form .field {
+  flex: 1 1 16rem;
 }
 
 /* ---------- Enrolment form grid ---------- */
@@ -569,6 +582,7 @@ a {
   }
 
   .invitation__actions,
+  .record__actions,
   .cluster--end {
     width: 100%;
   }

@@ -97,6 +97,8 @@ Every correction writes an audit event (mandatory, section 4). Whether a correct
 
 A learner has at most one current class placement. The data model must accommodate future academic-year history and transfers without redesign — every placement change is recorded with its timestamp and, where applicable, a transfer or end date (section 9, E1).
 
+**Applied in the Phase 3 administration slice (D-028).** 5.2 (deactivate, never delete), 5.3 (classes are school-scoped rows with an active flag), 5.4 (corrections audited, second approval off) and 5.5 (one current placement, changed by ending the open one and opening a new one) are now enforced by the endpoints in `docs/API_DOCUMENTATION.md` 14.16–14.21. Class naming stays entirely school-controlled; capacity limits, age rules and prerequisites are still not enforced.
+
 ## 6. Provisional School-Specific Policy
 
 `[PROVISIONAL]` — unverified. Configurable. Revisable without a schema change. (The **initial role set** in 5.1 is approved by D-021; the approval-policy and permission-detail rows below remain provisional.)
