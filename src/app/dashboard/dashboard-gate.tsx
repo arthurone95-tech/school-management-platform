@@ -33,12 +33,26 @@ export async function DashboardGate() {
     redirect("/sign-in");
   }
 
-  const [canManageMembers, canViewStudents, canManageClasses] =
-    await Promise.all([
-      context.hasPermission("member.manage"),
-      context.hasPermission("learner.read"),
-      context.hasPermission("class.manage"),
-    ]);
+  const [
+    canManageMembers,
+    canViewStudents,
+    canManageClasses,
+    canManageSchool,
+    canReadAcademic,
+    canReadSubjects,
+  ] = await Promise.all([
+    context.hasPermission("member.manage"),
+    context.hasPermission("learner.read"),
+    context.hasPermission("class.manage"),
+    context.hasPermission("school.manage"),
+    context.hasPermission("academic.read"),
+    context.hasPermission("subject.read"),
+  ]);
+
+  // The school settings page reveals whatever each permission allows; the nav
+  // shows the link only when there is something there for this caller to see
+  // (D-029).
+  const canViewSettings = canManageSchool || canReadAcademic || canReadSubjects;
 
   return (
     <DashboardClient
@@ -48,6 +62,7 @@ export async function DashboardGate() {
       canManageMembers={canManageMembers}
       canViewStudents={canViewStudents}
       canManageClasses={canManageClasses}
+      canViewSettings={canViewSettings}
     />
   );
 }

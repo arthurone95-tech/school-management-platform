@@ -20,6 +20,12 @@ live** to the non-production dev project `school-management-dev`
   store (D-025); **applied live** to `school-management-dev` on 2026-10-15 and
   verified locally (unit/database tests) and live (`tests/live/09-staff-auth.mjs`,
   44/44)
+- `20261016000005_phase3_administration.sql` — Phase 3 administration tables
+  `academic_years`, `terms`, `subjects`, `staff_assignments` plus the
+  `schools_update_managers` policy and six `school_administrator` permissions
+  (D-029); **applied live** to `school-management-dev` on 2026-10-16 and verified
+  locally (`tests/database/administration.test.ts`) and live
+  (`tests/live/13-administration-settings.mjs`, 53/53)
 
 No production database exists; the Free dev project is a **disposable,
 non-production** environment (D-013, D-015).
@@ -55,6 +61,7 @@ creation is a dashboard/user action:
    node tests/live/apply-migration.mjs supabase/migrations/20261011000002_portal_signup_guard.sql
    node tests/live/apply-migration.mjs supabase/migrations/20261012000003_staff_auth_roles.sql
    node tests/live/apply-migration.mjs supabase/migrations/20261015000004_staff_invitations.sql
+   node tests/live/apply-migration.mjs supabase/migrations/20261016000005_phase3_administration.sql
    ```
 
    This needs a `SUPABASE_MGMT_TOKEN` with access to the new project.
@@ -97,7 +104,9 @@ environment (the same values used by the live session-refresh checks 06/07).
 Only run this against an authorised **non-production** project. Migration
 `20261015000004_staff_invitations.sql` (D-025) was applied to
 `school-management-dev` this way on 2026-10-15, before the D-025 staff-auth live
-suite was run against it (44/44 passing).
+suite was run against it (44/44 passing), and
+`20261016000005_phase3_administration.sql` (D-029) was applied on 2026-10-16,
+before `tests/live/13-administration-settings.mjs` was run against it (53/53).
 
 ### 2. Supabase CLI path (ready, needs one user-supplied value)
 
@@ -107,8 +116,8 @@ bare `npx supabase` resolved a package missing the win32-x64 platform binary and
 failed to start). Verified 2026-10-15: the remote
 `supabase_migrations.schema_migrations` held exactly the three then-local
 migrations (matching `version` and `name`); `20261015000004` was afterwards
-applied through the Management API and recorded, so `db push` now lists nothing
-to apply.
+applied through the Management API and recorded on 2026-10-15, and
+`20261016000005` on 2026-10-16, so `db push` now lists nothing to apply.
 The CLI path still requires the project **database password**, which is never
 stored in this repo; the owner can supply it locally and then:
 

@@ -35,6 +35,7 @@ const steps = [
   "10-staff-dashboard.mjs",
   "11-enrolment.mjs",
   "12-administration.mjs",
+  "13-administration-settings.mjs",
 ];
 
 if (

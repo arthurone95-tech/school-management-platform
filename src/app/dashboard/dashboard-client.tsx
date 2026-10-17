@@ -109,6 +109,7 @@ export function DashboardClient({
   canManageMembers,
   canViewStudents,
   canManageClasses,
+  canViewSettings,
 }: {
   readonly email: string;
   readonly role: string;
@@ -116,6 +117,7 @@ export function DashboardClient({
   readonly canManageMembers: boolean;
   readonly canViewStudents: boolean;
   readonly canManageClasses: boolean;
+  readonly canViewSettings: boolean;
 }) {
   const router = useRouter();
 
@@ -316,6 +318,22 @@ export function DashboardClient({
                 href="/dashboard/classes"
               >
                 Classes
+              </Link>
+            ) : null}
+            {canManageMembers ? (
+              <Link
+                className="btn btn--secondary btn--sm"
+                href="/dashboard/staff"
+              >
+                Staff
+              </Link>
+            ) : null}
+            {canViewSettings ? (
+              <Link
+                className="btn btn--secondary btn--sm"
+                href="/dashboard/school"
+              >
+                Settings
               </Link>
             ) : null}
             <Button

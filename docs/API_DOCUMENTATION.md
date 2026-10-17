@@ -481,6 +481,177 @@ Document actual implemented behavior. Do not describe planned endpoints as opera
 - **Database tables:** `school_members` (read), `learners` (read), `classes` (read), `learner_class_placements` (read + update + insert). Audit triggers on `learner_class_placements` record the change.
 - **Tests:** `tests/live/12-administration.mjs` (200 move with exactly one open placement afterwards, 200 no-op for the current class, 409 inactive student, 400 another school's class, 404 unknown student, 404 another school's administrator, 200 recovery for a student with no placement, 403 for a teacher); the one-open-placement invariant is also checked against PGlite in `tests/database/enrolment-foundation.test.ts`.
 
+### 14.22 `GET /api/staff/school` — read the caller's school profile (implemented 2026-10-16; D-029)
+
+- **Purpose:** returns the school's name, code and status for the school settings page.
+- **Authentication:** Supabase session required. No session → `401`.
+- **Required permission:** `school.manage` in the caller's own school. Missing permission → `403`. (Membership alone already lets staff read the school name via `schools_select_members`; this is the administration view.)
+- **Response schema (200):** `{ "ok": true, "school": { "id": uuid, "name": string, "code": string, "status": string } }`.
+- **Errors:** `500` if the profile cannot be loaded; `403`; `401`. Bodies are `{ "ok": false, "error": string }`.
+- **Authorization boundary:** the read runs on the caller's session client, scoped to the school resolved from the caller's own active membership.
+- **Database tables:** `school_members` (read), `schools` (read).
+- **Tests:** `tests/live/13-administration-settings.mjs` (200 read, 403 for a permission-less teacher, 401 anonymous).
+
+### 14.23 `POST /api/staff/school/update` — rename the school (implemented 2026-10-16; D-029)
+
+- **Purpose:** changes the school display name. The school **code is immutable** because students use it with a username to sign in (D-020).
+- **Authentication:** Supabase session required. No session → `401`.
+- **Required permission:** `school.manage`. Missing permission → `403`.
+- **Request schema (JSON):** `{ "name": string (2–120, trimmed) }`. A blank, too-short or over-long name → `400`.
+- **Response schema (200):** `{ "ok": true, "school": { "id": uuid, "name": string, "code": string, "status": string } }`.
+- **Errors:** `400` invalid body; `404` the school does not exist; `403`; `401`.
+- **Authorization boundary:** the update runs on the caller's session client, so the new `schools_update_managers` policy (which requires `school.manage`) is the enforcement point; another school is not reachable.
+- **Database tables:** `school_members` (read), `schools` (read + update). The `schools` audit trigger records the change.
+- **Tests:** `tests/live/13-administration-settings.mjs` (200 rename with the code unchanged, 400 blank name, 403 for a teacher).
+
+### 14.24 `GET /api/staff/academic-years` — list a school's academic years and terms (implemented 2026-10-16; D-029)
+
+- **Purpose:** lists every academic year with its terms, for the school settings page.
+- **Authentication:** Supabase session required. No session → `401`.
+- **Required permission:** `academic.read` in the caller's own school. Missing permission → `403`.
+- **Response schema (200):** `{ "ok": true, "academicYears": [ { "id": uuid, "name": string, "startsOn": "YYYY-MM-DD", "endsOn": "YYYY-MM-DD", "isCurrent": boolean, "terms": [ { "id": uuid, "name": string, "startsOn": "YYYY-MM-DD", "endsOn": "YYYY-MM-DD" } ] } ] }`.
+- **Errors:** `500` if the years cannot be loaded; `403`; `401`.
+- **Database tables:** `school_members` (read), `academic_years` + `terms` (read, on the caller's session client).
+- **Tests:** `tests/live/13-administration-settings.mjs` (200 list, 403 for a teacher, 401 anonymous).
+
+### 14.25 `POST /api/staff/academic-years` — create an academic year (implemented 2026-10-16; D-029)
+
+- **Purpose:** creates a school-defined academic year with a label and start/end dates. Periods are stored, never assumed from a hard-coded calendar.
+- **Authentication:** Supabase session required. No session → `401`.
+- **Required permission:** `academic.manage`. Missing permission → `403`.
+- **Request schema (JSON):** `{ "name": string (1–80, trimmed), "startsOn": "YYYY-MM-DD", "endsOn": "YYYY-MM-DD" }`. A malformed date, an impossible calendar date, or an end before the start → `400`. A new year is created **not current**.
+- **Response schema (201):** `{ "ok": true, "academicYear": { "id": uuid, "name": string, "startsOn": "YYYY-MM-DD", "endsOn": "YYYY-MM-DD", "isCurrent": false, "terms": [] } }`.
+- **Errors:** `400` invalid body; `409` a year with that label already exists in the school; `403`; `401`.
+- **Authorization boundary:** the insert runs on the caller's session client (`academic_years_insert_managers`, which requires `academic.manage`), scoped to the caller's school.
+- **Database tables:** `school_members` (read), `academic_years` (insert). Audit + `updated_at` triggers fire.
+- **Tests:** `tests/live/13-administration-settings.mjs` (201 create, 409 duplicate label, 400 end-before-start, 403 for a teacher); the label uniqueness, one-current index and insert policy are also checked against PGlite in `tests/database/administration.test.ts`.
+
+### 14.26 `POST /api/staff/academic-years/update` — rename, re-date or mark current an academic year (implemented 2026-10-16; D-029)
+
+- **Purpose:** renames a year, changes its dates, and/or marks it current. Setting `isCurrent` true clears any other current year for the school first, so the partial unique index `academic_years_one_current_idx` is never violated.
+- **Authentication:** Supabase session required. No session → `401`.
+- **Required permission:** `academic.manage`. Missing permission → `403`.
+- **Request schema (JSON):** `{ "academicYearId": uuid, "name"?: string (1–80), "startsOn"?: "YYYY-MM-DD", "endsOn"?: "YYYY-MM-DD", "isCurrent"?: boolean }`. At least one change must be present → otherwise `400`.
+- **Response schema (200):** `{ "ok": true, "academicYear": AcademicYearSummary }` (the updated year with its terms).
+- **Errors:** `400` invalid body, no change, malformed date or end before start; `404` the year does not exist in the caller's school (another school's year is indistinguishable); `409` the new label collides; `403`; `401`.
+- **Authorization boundary and audit:** the writes run on the caller's session client (`academic_years_update_managers`), scoped to the caller's school; the `academic_years` audit trigger records the change.
+- **Database tables:** `school_members` (read), `academic_years` (read + update).
+- **Tests:** `tests/live/13-administration-settings.mjs` (200 mark current, the previously current year cleared, 404 another school's administrator); the one-current rule is also checked against PGlite.
+
+### 14.27 `POST /api/staff/terms` — add a term to an academic year (implemented 2026-10-16; D-029)
+
+- **Purpose:** adds a term with a label and dates to one of the school's academic years.
+- **Authentication:** Supabase session required. No session → `401`.
+- **Required permission:** `academic.manage`. Missing permission → `403`.
+- **Request schema (JSON):** `{ "academicYearId": uuid, "name": string (1–40, trimmed), "startsOn": "YYYY-MM-DD", "endsOn": "YYYY-MM-DD" }`. A malformed date, an impossible calendar date, or an end before the start → `400`.
+- **Response schema (201):** `{ "ok": true, "term": { "id": uuid, "name": string, "startsOn": "YYYY-MM-DD", "endsOn": "YYYY-MM-DD" } }`.
+- **Errors:** `400` invalid body, or an `academicYearId` that is not in the caller's school (the composite foreign key `terms_year_school_fkey` rejects it); `409` a term with that label already exists in the year; `403`; `401`.
+- **Authorization boundary:** the insert runs on the caller's session client (`terms_insert_managers`); the term's `school_id` must equal the caller's school via the composite foreign key.
+- **Database tables:** `school_members` (read), `terms` (insert). Audit + `updated_at` triggers fire.
+- **Tests:** `tests/live/13-administration-settings.mjs` (201 create, 409 duplicate label, 403 for a teacher); the composite foreign key is checked against PGlite (`tests/database/administration.test.ts`).
+
+### 14.28 `POST /api/staff/terms/update` — rename or re-date a term (implemented 2026-10-16; D-029)
+
+- **Purpose:** renames a term or changes its dates.
+- **Authentication:** Supabase session required. No session → `401`.
+- **Required permission:** `academic.manage`. Missing permission → `403`.
+- **Request schema (JSON):** `{ "termId": uuid, "name"?: string (1–40), "startsOn"?: "YYYY-MM-DD", "endsOn"?: "YYYY-MM-DD" }`. At least one change must be present → otherwise `400`.
+- **Response schema (200):** `{ "ok": true, "term": { "id": uuid, "name": string, "startsOn": "YYYY-MM-DD", "endsOn": "YYYY-MM-DD" } }`.
+- **Errors:** `400` invalid body, no change, malformed date or end before start; `404` the term does not exist in the caller's school; `409` the new label collides within the year; `403`; `401`.
+- **Authorization boundary and audit:** the update runs on the caller's session client (`terms_update_managers`), scoped in the query and by RLS to the caller's school; the `terms` audit trigger records the change.
+- **Database tables:** `school_members` (read), `terms` (read + update).
+- **Tests:** `tests/live/13-administration-settings.mjs` (200 rename, 404 another school's administrator).
+
+### 14.29 `GET /api/staff/subjects` — list a school's subjects (implemented 2026-10-16; D-029)
+
+- **Purpose:** lists the school's subjects, including deactivated ones so they can be reactivated.
+- **Authentication:** Supabase session required. No session → `401`.
+- **Required permission:** `subject.read` in the caller's own school. Missing permission → `403`.
+- **Response schema (200):** `{ "ok": true, "subjects": [ { "id": uuid, "name": string, "code": string | null, "isActive": boolean } ] }`.
+- **Errors:** `500`; `403`; `401`.
+- **Database tables:** `school_members` (read), `subjects` (read, on the caller's session client).
+- **Tests:** `tests/live/13-administration-settings.mjs` (403 for a teacher, 401 anonymous).
+
+### 14.30 `POST /api/staff/subjects` — create a subject (implemented 2026-10-16; D-029)
+
+- **Purpose:** creates a school-scoped subject with an optional short code. New subjects are active.
+- **Authentication:** Supabase session required. No session → `401`.
+- **Required permission:** `subject.manage`. Missing permission → `403`.
+- **Request schema (JSON):** `{ "name": string (1–80, trimmed), "code"?: string (1–20, trimmed) | null }`. A blank name or an over-long code → `400`. A blank code is stored as `null`.
+- **Response schema (201):** `{ "ok": true, "subject": { "id": uuid, "name": string, "code": string | null, "isActive": true } }`.
+- **Errors:** `400` invalid body; `409` a subject with that name already exists in the school; `403`; `401`.
+- **Authorization boundary:** the insert runs on the caller's session client (`subjects_insert_managers`, which requires `subject.manage`), scoped to the caller's school.
+- **Database tables:** `school_members` (read), `subjects` (insert). Audit + `updated_at` triggers fire.
+- **Tests:** `tests/live/13-administration-settings.mjs` (201 create, 409 duplicate name, 403 for a teacher); uniqueness is checked against PGlite.
+
+### 14.31 `POST /api/staff/subjects/update` — rename, re-code, activate or deactivate a subject (implemented 2026-10-16; D-029)
+
+- **Purpose:** renames a subject, changes its code, or sets its active flag. A subject is **retired by deactivation, never deleted**; the application exposes no delete path.
+- **Authentication:** Supabase session required. No session → `401`.
+- **Required permission:** `subject.manage`. Missing permission → `403`.
+- **Request schema (JSON):** `{ "subjectId": uuid, "name"?: string (1–80), "code"?: string (1–20) | null, "isActive"?: boolean }`. At least one change must be present → otherwise `400`. `"code": null` clears it.
+- **Response schema (200):** `{ "ok": true, "subject": { "id": uuid, "name": string, "code": string | null, "isActive": boolean } }`.
+- **Errors:** `400` invalid body or no change; `404` the subject does not exist in the caller's school; `409` the new name collides; `403`; `401`.
+- **Authorization boundary and audit:** the update runs on the caller's session client (`subjects_update_managers`), scoped to the caller's school; the `subjects` audit trigger records the change.
+- **Database tables:** `school_members` (read), `subjects` (read + update).
+- **Tests:** `tests/live/13-administration-settings.mjs` (200 deactivate, 200 reactivate, 404 another school's administrator, 403 for a teacher).
+
+### 14.32 `GET /api/staff/members` — list a school's staff and their assignments (implemented 2026-10-16; D-029)
+
+- **Purpose:** lists the school's staff memberships (with role and status) and each member's class/subject assignments, for the staff administration page.
+- **Authentication:** Supabase session required. No session → `401`.
+- **Required permission:** `member.manage` in the caller's own school. Missing permission → `403`.
+- **Response schema (200):** `{ "ok": true, "members": [ { "membershipId": uuid, "userId": uuid, "email": string | null, "role": string, "status": string, "assignments": [ { "id": uuid, "classId": uuid | null, "className": string | null, "subjectId": uuid | null, "subjectName": string | null } ] } ] }`.
+- **Errors:** `500` if the members cannot be loaded; `403`; `401`.
+- **Privileged read:** the membership rows and assignments are read on the caller's session client, so RLS scopes them to the caller's school. The member **email** lives in Supabase Auth, which PostgREST does not expose; the server-only secret key resolves it with `getUserById`, and only for the membership ids already read for that school — the privileged client cannot be pointed at another school (`docs/SECURITY_AND_PRIVACY.md` 4).
+- **Database tables:** `school_members`, `staff_assignments`, `classes`, `subjects` (read, on the caller's session client) + `auth.users` (email, via the server-only secret key).
+- **Tests:** `tests/live/13-administration-settings.mjs` (200 list containing the administrator, school B's administrator cannot see school A's staff, 403 for a teacher, 401 anonymous).
+
+### 14.33 `POST /api/staff/members/status` — suspend, restore or revoke a staff membership (implemented 2026-10-16; D-029)
+
+- **Purpose:** applies the approved staff status change (D-023 pattern): `suspend`, `restore` (to active) or `revoke`. A membership is a state change, **never a hard delete**: `has_school_permission` ignores a non-active membership, so a suspended or revoked member loses access immediately.
+- **Authentication:** Supabase session required. No session → `401`.
+- **Required permission:** `member.manage`. Missing permission → `403`.
+- **Request schema (JSON):** `{ "membershipId": uuid, "action": "suspend" | "restore" | "revoke" }`. Any other action → `400`.
+- **Response schema (200):** `{ "ok": true, "status": "active" | "suspended" | "revoked" }`.
+- **Errors:** `400` invalid body; `404` the membership does not exist in the caller's school (another school's membership is indistinguishable); `403`; `401`.
+- **No-op writes:** setting the status already in force returns the current status and writes nothing, so a repeat writes no empty audit event.
+- **Authorization boundary and audit:** the update runs on the caller's session client (`school_members_update_managers`), scoped to the caller's school; the `school_members` audit trigger records the change. `has_school_permission` already ignores a non-active membership, so access is lost on the next request.
+- **Known limitation:** there is no last-administrator guard, so an administrator can suspend or revoke their own membership; this follows the D-023 pattern exactly and is recorded in D-029.
+- **Database tables:** `school_members` (read + update).
+- **Tests:** `tests/live/13-administration-settings.mjs` (200 suspend, the status visible in the list, 200 restore, 200 revoke with the row retained, 404 another school's administrator, 403 for a teacher); a suspended administrator losing read access is checked against PGlite.
+
+### 14.34 `POST /api/staff/assignments` — assign a staff member to a class and/or subject (implemented 2026-10-16; D-029)
+
+- **Purpose:** links a membership to a class and/or a subject inside one school.
+- **Authentication:** Supabase session required. No session → `401`.
+- **Required permission:** `assignment.manage`. Missing permission → `403`.
+- **Request schema (JSON):** `{ "membershipId": uuid, "classId"?: uuid, "subjectId"?: uuid }`. At least one of `classId` / `subjectId` must be present (a blank string counts as absent) → otherwise `400`.
+- **Response schema (201):** `{ "ok": true, "assignmentId": uuid }`.
+- **Errors:** `400` invalid body, no target, or a class/subject id that is not in the caller's school (the composite foreign keys `staff_assignments_class_school_fkey` / `staff_assignments_subject_school_fkey` reject it); `409` the same assignment already exists; `404` the membership does not exist in the caller's school; `403`; `401`.
+- **Authorization boundary:** the insert runs on the caller's session client (`staff_assignments_insert_managers`); the composite foreign keys keep the membership, class and subject in one school, so a cross-school id fails the constraint instead of crossing the tenant boundary.
+- **Database tables:** `school_members` (read), `staff_assignments` (insert). Audit + `updated_at` triggers fire.
+- **Tests:** `tests/live/13-administration-settings.mjs` (201 create, 409 duplicate, 400 no target, 400 another school's class, the assignment appears on the member, 403 for a teacher); the composite foreign keys and unique index are checked against PGlite.
+
+### 14.35 `POST /api/staff/assignments/delete` — remove a staff assignment (implemented 2026-10-16; D-029)
+
+- **Purpose:** removes a class/subject assignment from a staff member. Unlike the records it links, an assignment is a relationship, so removing it is a legitimate delete.
+- **Authentication:** Supabase session required. No session → `401`.
+- **Required permission:** `assignment.manage`. Missing permission → `403`.
+- **Request schema (JSON):** `{ "assignmentId": uuid }`.
+- **Response schema (200):** `{ "ok": true }`.
+- **Errors:** `400` invalid body; `404` the assignment does not exist in the caller's school (another school's assignment is indistinguishable); `403`; `401`.
+- **Authorization boundary:** the delete runs on the caller's session client (`staff_assignments_delete_managers`), scoped to the caller's school; the audit trigger records it.
+- **Database tables:** `school_members` (read), `staff_assignments` (delete).
+- **Tests:** `tests/live/13-administration-settings.mjs` (200 remove, 404 unknown id, 403 for a teacher).
+
+### 14.36 `GET /dashboard/school` and `GET /dashboard/staff` — administration pages (implemented 2026-10-16; D-029)
+
+- **Purpose:** the session-gated server-rendered pages that drive the new endpoints above. `/dashboard/school` shows the school profile, academic years and terms, and subjects; `/dashboard/staff` shows members and their assignments with suspend / restore / revoke.
+- **Authentication:** a prerenderable shell streams its session-dependent part behind `<Suspense>`; an anonymous visitor receives a redirect to `/sign-in`. The pages read no data themselves beyond the gate; the browser calls the API routes, which repeat every identity, school and permission check.
+- **Authorization:** the page is a user-experience gate only; each control is shown only when the caller holds the relevant permission (`school.manage`, `academic.read`/`academic.manage`, `subject.read`/`subject.manage`, `member.manage`, `assignment.read`/`assignment.manage`). The API and Row Level Security remain the enforcement boundary.
+- **Tests:** `tests/live/13-administration-settings.mjs` (anonymous redirect for both pages).
+
 ## 15. Implementation Gate
 
 Implement only the operations required for the selected end-to-end workflow.
