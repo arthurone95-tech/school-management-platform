@@ -14,17 +14,31 @@ export function Alert({
   variant = "info",
   children,
   className,
+  role,
 }: {
   readonly variant?: AlertVariant;
   readonly children: ReactNode;
   readonly className?: string;
+  /**
+   * Overrides the implicit live-region role. The default is `alert` for errors
+   * and `status` otherwise; pass `role={null}` when the message is static page
+   * copy rather than the outcome of an operation, so it is not announced on
+   * load.
+   */
+  readonly role?: "alert" | "status" | null;
 }) {
   return (
     <div
       className={["alert", `alert--${variant}`, className ?? ""]
         .filter(Boolean)
         .join(" ")}
-      role={variant === "error" ? "alert" : "status"}
+      role={
+        role === undefined
+          ? variant === "error"
+            ? "alert"
+            : "status"
+          : (role ?? undefined)
+      }
     >
       {children}
     </div>

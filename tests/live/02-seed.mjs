@@ -68,6 +68,11 @@ async function cleanupSchoolCode(code) {
   const authIds = (learners ?? []).map((l) => l.auth_user_id).filter(Boolean);
 
   const steps = [
+    // Attendance first: its records reference learners with ON DELETE RESTRICT,
+    // so they must go before the learners, and its sessions reference classes,
+    // subjects and terms.
+    () => admin.from("attendance_records").delete().eq("school_id", school.id),
+    () => admin.from("attendance_sessions").delete().eq("school_id", school.id),
     () =>
       learnerIds.length
         ? admin
@@ -86,6 +91,12 @@ async function cleanupSchoolCode(code) {
       learnerIds.length
         ? admin.from("learners").delete().in("id", learnerIds)
         : null,
+    // Staff assignments reference classes and members with ON DELETE RESTRICT.
+    () => admin.from("staff_assignments").delete().eq("school_id", school.id),
+    () => admin.from("staff_invitations").delete().eq("school_id", school.id),
+    () => admin.from("subjects").delete().eq("school_id", school.id),
+    () => admin.from("terms").delete().eq("school_id", school.id),
+    () => admin.from("academic_years").delete().eq("school_id", school.id),
     () => admin.from("classes").delete().eq("school_id", school.id),
     () => admin.from("school_members").delete().eq("school_id", school.id),
     // Audit rows are append-only for users but must be cleared before the

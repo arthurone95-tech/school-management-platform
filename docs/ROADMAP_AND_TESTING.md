@@ -188,6 +188,20 @@ Exit criteria:
 - Permissions prevent unauthorized access and changes.
 - Records remain consistent when operations fail or are repeated.
 
+**Status 2026-10-17 (D-030):** the first Phase 4 slice, **class attendance**, is implemented and verified live. The owner chose four defaults: statuses `present`/`absent`/`late`/`excused`; corrections same-day for a teacher and any-time for an administrator; no timetable (a register is a class + date + optional subject); and teachers take attendance for their assigned classes while administrators also get per-class reports. No offline capture, which `docs/PHASE0_RISK_REGISTER.md` had flagged as the larger part of this area.
+
+**Teacher scope.** A teacher may reach only the classes they are assigned to through `staff_assignments`. This is enforced in the database by `can_access_class`, not only in the application: it is the predicate behind every attendance policy, so a write for any other class is refused. A teacher holds `attendance.read`/`attendance.record`/`attendance.correct` and still **no** `learner.read`, `class.read` or `subject.read`; the roster they mark comes from the gated `class_roster` function and exposes only id, registration number and name. `attendance.report` is administrator-only, so a teacher's attendance permissions never extend to the school-wide view.
+
+**Records, not state.** Attendance has no delete path: no delete policy exists and `anon`/`authenticated` hold no `DELETE` grant. A register is corrected by re-submitting it whole (upsert by `(session_id, learner_id)`), and every change is audited with its actor. A partial submission is refused, because an incomplete register cannot be distinguished from a complete one.
+
+Endpoints: `GET /api/staff/attendance/options`, `GET`/`POST /api/staff/attendance/sessions`, `GET`/`POST /api/staff/attendance/register`, `GET /api/staff/attendance/report`, and the `/dashboard/attendance` page.
+
+Gates pass: format, lint, type-check, build, unit tests **285** (19 files; +66 for the attendance parsers, the shared date helpers and the PGlite attendance guarantees) and the live suites via `node tests/live/run-all.mjs`, all passing — including the new `14-attendance.mjs` (46 checks: anonymous refusal, the authorized flows, validation, duplicates, cross-school denial, the teacher class scope, the correction window, the report totals, and auditing) and the Management-API session-refresh checks 06/07, which were skipped in the previous run and ran here.
+
+The exit criteria are claimed **for attendance only**. Assessments and results remain blocked on the unvalidated grading rules above, and academic summaries are limited to the per-class attendance report. Known limitations recorded in D-030: "today" is UTC rather than a configurable school timezone; nothing yet groups a report by term; there is no per-learner report page, no bulk import, and no offline capture.
+
+**Before this slice:** the dev project was found to hold an `attendance_sessions`/`attendance_records` schema recorded as `20261017000001_attendance.sql` with no source file in version control and weaker rules than approved (school-wide policies with no teacher class scope, no audit triggers, `DELETE` policies, no `attendance.report`). Both tables held zero rows; the owner authorised resetting it on 2026-10-17, and migrations `20261017000006`–`0008` replaced it. The seed cleanup in `tests/live/02-seed.mjs` was extended to delete attendance and the D-029 tables in dependency order, which it had not been doing.
+
 ### Phase 5: Additional modules and integrations
 
 Add further approved modules when their requirements and dependencies are understood.

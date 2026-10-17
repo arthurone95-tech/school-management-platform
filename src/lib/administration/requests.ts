@@ -27,13 +27,14 @@ export const SUBJECT_CODE_MAX_LENGTH = 20;
 export const MEMBER_STATUS_ACTIONS = ["suspend", "restore", "revoke"] as const;
 export type MemberStatusAction = (typeof MEMBER_STATUS_ACTIONS)[number];
 
+import { isIsoDate } from "@/lib/dates";
+
 export type ParseResult<T> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly message: string };
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -50,18 +51,6 @@ function readString(body: Record<string, unknown>, key: string): string | null {
 
 function isUuid(value: string): boolean {
   return UUID_PATTERN.test(value);
-}
-
-/** A real calendar date in `YYYY-MM-DD` form (the wire format for `date`). */
-function isIsoDate(value: string): boolean {
-  if (!ISO_DATE_PATTERN.test(value)) {
-    return false;
-  }
-  const parsed = new Date(`${value}T00:00:00Z`);
-  return (
-    !Number.isNaN(parsed.getTime()) &&
-    parsed.toISOString().slice(0, 10) === value
-  );
 }
 
 /** Trims a label and returns it only when it is non-empty and within `max`. */

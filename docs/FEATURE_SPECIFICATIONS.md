@@ -122,6 +122,8 @@ These are potential modules and must be scoped individually.
 
 Define the permitted attendance statuses, who may record or correct attendance, how duplicate submissions are prevented, and whether any offline attendance workflow is justified.
 
+**Resolved for the first slice by D-030 (2026-10-17), implemented.** Statuses are `present`, `absent`, `late` and `excused`. A teacher records and corrects attendance for the classes they are assigned to; an administrator may do so for any class in their school. A teacher may correct a register only while its date is still today; an administrator may correct any date. Duplicate submissions are prevented at two levels: one register per class, date and subject (unique index), and one record per learner per register (`attendance_records_one_per_learner`) combined with a whole-register submission that upserts, so re-saving unchanged marks is idempotent rather than duplicating. **Offline attendance is explicitly out of scope for this slice** and remains an open question — it is the reason `docs/PHASE0_RISK_REGISTER.md` rated attendance as a larger scope, and it is not approved.
+
 ### Assessment and results
 
 Define assessment types, valid mark ranges, grading rules, authorization, correction procedures and historical preservation.

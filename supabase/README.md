@@ -26,6 +26,20 @@ live** to the non-production dev project `school-management-dev`
   (D-029); **applied live** to `school-management-dev` on 2026-10-16 and verified
   locally (`tests/database/administration.test.ts`) and live
   (`tests/live/13-administration-settings.mjs`, 53/53)
+- `20261017000006_phase4_attendance.sql` — Phase 4 attendance tables
+  `attendance_sessions`, `attendance_records`, the class-scoped `SECURITY
+  DEFINER` helpers `can_access_class` / `can_access_attendance_session` /
+  `class_roster`, and the `attendance.*` permissions (D-030); **applied live** to
+  `school-management-dev` on 2026-10-17 and verified locally
+  (`tests/database/attendance.test.ts`) and live
+  (`tests/live/14-attendance.mjs`, 46/46)
+- `20261017000007_phase4_attendance_scope.sql` — the `accessible_classes` and
+  `class_subjects` lookups a teacher needs without `class.read` / `subject.read`
+  (D-030); **applied live** 2026-10-17
+- `20261017000008_phase4_attendance_fixture_cleanup.sql` — grants `DELETE` on the
+  attendance tables to `service_role` alone so the non-production seed can clear
+  attendance before deleting learners; `anon`/`authenticated` still hold none
+  (D-030); **applied live** 2026-10-17
 
 No production database exists; the Free dev project is a **disposable,
 non-production** environment (D-013, D-015).
@@ -62,6 +76,9 @@ creation is a dashboard/user action:
    node tests/live/apply-migration.mjs supabase/migrations/20261012000003_staff_auth_roles.sql
    node tests/live/apply-migration.mjs supabase/migrations/20261015000004_staff_invitations.sql
    node tests/live/apply-migration.mjs supabase/migrations/20261016000005_phase3_administration.sql
+   node tests/live/apply-migration.mjs supabase/migrations/20261017000006_phase4_attendance.sql
+   node tests/live/apply-migration.mjs supabase/migrations/20261017000007_phase4_attendance_scope.sql
+   node tests/live/apply-migration.mjs supabase/migrations/20261017000008_phase4_attendance_fixture_cleanup.sql
    ```
 
    This needs a `SUPABASE_MGMT_TOKEN` with access to the new project.

@@ -652,6 +652,64 @@ Document actual implemented behavior. Do not describe planned endpoints as opera
 - **Authorization:** the page is a user-experience gate only; each control is shown only when the caller holds the relevant permission (`school.manage`, `academic.read`/`academic.manage`, `subject.read`/`subject.manage`, `member.manage`, `assignment.read`/`assignment.manage`). The API and Row Level Security remain the enforcement boundary.
 - **Tests:** `tests/live/13-administration-settings.mjs` (anonymous redirect for both pages).
 
+### 14.37 `GET /api/staff/attendance/options` — the caller's classes and subjects (implemented 2026-10-17; D-030)
+
+- **Purpose:** returns the classes the caller may take attendance for, and when `classId` is given, the subjects they may use in that class.
+- **Authentication:** Supabase session required. No session → `401`.
+- **Required permission:** `attendance.read` in the caller's own school. Missing permission → `403`.
+- **Response schema (200):** `{ "ok": true, "classes": [ { "id": uuid, "name": string, "isActive": boolean } ], "subjects": [ { "id": uuid, "name": string, "code": string | null } ] }`. `subjects` is empty when no `classId` is supplied.
+- **Errors:** `500`; `403`; `401`.
+- **Least privilege:** this is deliberately **not** `GET /api/staff/classes`. A teacher holds no `class.read` or `subject.read` (those stay administrator-only), so this endpoint reads through the `accessible_classes` and `class_subjects` functions, which are `SECURITY DEFINER` and gated on `can_access_class`. A teacher therefore sees the classes they are assigned to and their own subjects within them; RLS on `classes` and `subjects` is not bypassed for anybody, because the functions apply the same scope test. No learner data is exposed here.
+- **Database tables:** `school_members`, `classes`, `staff_assignments`, `subjects` (read through the gated functions).
+- **Tests:** `tests/live/14-attendance.mjs` (200 for both roles, an empty picker for a teacher assigned to no class, a teacher not receiving the whole subject catalogue, 403/401).
+
+### 14.38 `GET/POST /api/staff/attendance/sessions` — list and open registers (implemented 2026-10-17; D-030)
+
+- **Purpose:** `GET` lists the registers on a date (defaulting to today); `POST` opens one.
+- **Authentication:** Supabase session required. No session → `401`.
+- **Required permission:** `GET` `attendance.read`; `POST` `attendance.record`. Missing permission → `403`.
+- **Request schema (POST, JSON):** `{ "classId": uuid, "sessionDate": "YYYY-MM-DD", "subjectId"?: uuid }`. A missing or malformed class → `400`; a malformed or future date → `400` ("Attendance cannot be recorded for a future date").
+- **Response schemas:** `GET` → `{ "ok": true, "sessions": [ { "id": uuid, "classId": uuid, "className": string, "subjectId": uuid | null, "subjectName": string | null, "sessionDate": "YYYY-MM-DD", "notes": string | null, "recordedCount": number, "isCorrectable": boolean } ] }`; `POST` → `201` with `{ "ok": true, "session": AttendanceSessionSummary }`.
+- **Errors:** `400` invalid body; `404` the class is not one the caller may attend — an unassigned class for a teacher, another school's class for anybody; `409` a register for that class, date and subject already exists; `403`; `401`.
+- **Teacher scope and cross-school behaviour:** the school comes from the caller's own membership, never the request, and both queries run on the caller's session client under policies gated on `can_access_class`. An out-of-scope class is therefore a `404`, identical to one that does not exist.
+- **Duplicate prevention:** `attendance_sessions_one_per_class_date_subject_idx` — the same register cannot be opened twice.
+- **`isCorrectable`:** false when the date is in the past and the caller is not an `attendance.report` holder. It is advisory for the interface; the server refuses the write regardless.
+- **Tests:** `tests/live/14-attendance.mjs` (201, 409 duplicate, 404 unassigned class, 404/400 cross-school, 400 future date, 400 missing class, 403/401, and the listing filtered to the caller's own classes).
+
+### 14.39 `GET/POST /api/staff/attendance/register` — read and write a register (implemented 2026-10-17; D-030)
+
+- **Purpose:** `GET` returns the register for one session (roster plus what has been marked); `POST` writes the whole register.
+- **Authentication:** Supabase session required. No session → `401`.
+- **Required permission:** `GET` `attendance.read`; `POST` `attendance.record`, and additionally `attendance.correct` when marks already exist. Missing permission → `403`.
+- **Request schema (POST, JSON):** `{ "sessionId": uuid, "entries": [ { "learnerId": uuid, "status": "present" | "absent" | "late" | "excused", "note"?: string | null } ] }`. At least one entry, at most 200; a repeated `learnerId` → `400`; an unknown status → `400`; a note over 200 characters → `400`.
+- **Response schemas:** `GET` → `{ "ok": true, "detail": { "session": AttendanceSessionSummary, "roster": [ { "learnerId": uuid, "registrationNumber": string, "fullName": string, "status": ... | null, "note": string | null } ] } }`; `POST` → `{ "ok": true, "detail": ... }` (the register is read back after writing).
+- **Errors:** `400` invalid body, or a learner who is not currently in the class; `404` the session is not the caller's (another class, or another school) — never a hint that it exists; `409` the correction window is closed for a teacher; `403`; `401`.
+- **The register is submitted whole.** Every learner currently in the class must be marked exactly once. A partial submission is refused because an incomplete register is indistinguishable from a complete one and would silently understate absence. Existing marks are updated and new ones inserted, so re-saving unchanged marks is idempotent.
+- **Correction window (business rule, enforced server-side):** a teacher may write a register only while its date is still today; a holder of `attendance.report` (an administrator) may correct any date. A closed window is `409`, reported separately from a permission failure so the interface can explain it.
+- **Least privilege:** the roster comes from the gated `class_roster` function, which returns only id, registration number and name. A teacher holds no `learner.read`, and no other learner attribute crosses this endpoint.
+- **Idempotency and auditing:** writes upsert by `(session_id, learner_id)`; every change is written to `audit_events` by the `audit_row_change` trigger with its actor. There is no delete path — attendance is a record, not a state.
+- **Database tables:** `school_members`, `attendance_sessions`, `attendance_records`, `learner_class_placements` and `learners` (read through `class_roster`), `classes`, `subjects`.
+- **Tests:** `tests/live/14-attendance.mjs` (200 read and write, 404 cross-school read, 400 unknown status / repeated learner / unknown learner, 409 correction window for a teacher with the same register shown read-only, 200 administrator correction of a past register, 403/401, and the audit assertions).
+
+### 14.40 `GET /api/staff/attendance/report` — per-class attendance report (implemented 2026-10-17; D-030)
+
+- **Purpose:** aggregates one class's attendance over a bounded window, as status totals and a per-learner breakdown.
+- **Authentication:** Supabase session required. No session → `401`.
+- **Required permission:** `attendance.report`, granted to `school_administrator` only. A teacher → `403`. This is deliberate: a teacher's class-scoped attendance permissions must not extend to the school-wide view.
+- **Query parameters:** `classId` (uuid, **required**), `from` and `to` (`YYYY-MM-DD`, each defaulting to today). A missing or malformed class → `400`; an end before the start → `400`; a window of 366 days or more → `400`.
+- **Response schema (200):** `{ "ok": true, "report": { "classId": uuid, "className": string, "from": "YYYY-MM-DD", "to": "YYYY-MM-DD", "sessionCount": number, "totals": [ { "status": ..., "count": number } ], "learners": [ { "learnerId": uuid, "registrationNumber": string, "fullName": string, "present": number, "absent": number, "late": number, "excused": number, "sessionsRecorded": number } ] } }`.
+- **Errors:** `400`; `404` the class is not visible to the caller (another school, or nonexistent); `403`; `401`.
+- **Bounding:** the window is capped at `ATTENDANCE_MAX_REPORT_DAYS` (366) and learners at `ATTENDANCE_MAX_RECORDS` (200) per register, so no unbounded attendance aggregation is possible (`docs/AGENTS.md` 6).
+- **Authorization boundary:** counts are computed from rows the caller's own session client can read. A class outside their school is invisible to it, so the report cannot disclose another school's attendance. A learner who has since changed class still appears under the class the attendance was taken in, which is what a register is a record of.
+- **Tests:** `tests/live/14-attendance.mjs` (200 with totals matching what was recorded and a per-learner breakdown, 403 for a teacher, 404 for another school's class, 400 for a missing class and for an unbounded window, 401).
+
+### 14.41 `GET /dashboard/attendance` — attendance page (implemented 2026-10-17; D-030)
+
+- **Purpose:** the session-gated server-rendered page behind the endpoints above: take a register for a class, subject and date, mark every learner, and — for an `attendance.report` holder — build a class report.
+- **Authentication:** a prerenderable shell with the session-dependent part behind `<Suspense>`; an anonymous visitor is redirected to `/sign-in`. A caller holding neither `attendance.record` nor `attendance.read` is redirected to `/dashboard`.
+- **Authorization:** the page is a user-experience gate only. The browser calls the API routes, which repeat every identity, school, permission and scope check, and `can_access_class` is the boundary that holds.
+- **Tests:** `tests/live/14-attendance.mjs` (the streamed redirect for an anonymous visitor).
+
 ## 15. Implementation Gate
 
 Implement only the operations required for the selected end-to-end workflow.

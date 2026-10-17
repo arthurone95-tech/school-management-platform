@@ -176,12 +176,42 @@ describe("global permission catalogue", () => {
     );
   });
 
-  it("gives the teacher no permission rows by default: D-021 fails closed", async () => {
+  it("gives the teacher only the attendance permissions, never administration", async () => {
     await actAsUser(db, STAFF_A);
     const result = await db.query<{ permission: string }>(
-      `select permission from public.role_permissions where role = 'teacher'`,
+      `select permission from public.role_permissions where role = 'teacher' order by permission`,
     );
-    expect(result.rows).toHaveLength(0);
+
+    // D-021 started the teacher at zero permissions and the platform failed
+    // closed. D-030 deliberately relaxes that for the first teacher-facing
+    // feature: attendance on the classes they are assigned to. Nothing
+    // administrator-only may creep in, which is what this asserts.
+    expect(result.rows.map((row) => row.permission)).toEqual([
+      "attendance.correct",
+      "attendance.read",
+      "attendance.record",
+    ]);
+
+    for (const adminOnly of [
+      "attendance.report",
+      "member.manage",
+      "class.manage",
+      "class.read",
+      "subject.read",
+      "subject.manage",
+      "learner.read",
+      "learner.create",
+      "learner.update",
+      "learner.placement.manage",
+      "learner.portal.manage",
+      "audit.read",
+      "school.manage",
+      "academic.read",
+      "academic.manage",
+      "assignment.manage",
+    ]) {
+      expect(result.rows.map((row) => row.permission)).not.toContain(adminOnly);
+    }
   });
 });
 
