@@ -2,7 +2,12 @@
 
 **Project:** School Management Platform\
 **Document status:** Living decision record\
-**Version:** 1.4
+**Version:** 1.5
+
+**Note on D-031 and D-032:** these two decisions were taken during an unattended
+autonomous session on 2026-10-18, without owner approval, under a standing
+instruction to complete the remaining roadmap phases. Both are flagged for owner
+confirmation. See `docs/AUTONOMOUS_SESSION_REPORT.md` section G.
 
 ## 1. Purpose
 
