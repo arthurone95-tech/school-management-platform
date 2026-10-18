@@ -22,6 +22,8 @@ import type {
   SchoolProfile,
   SubjectSummary,
 } from "@/lib/administration/types";
+import { parseGradeBandCreateInput } from "@/lib/academics/requests";
+import type { GradeBandSummary } from "@/lib/academics/types";
 import { roleLabel } from "@/lib/staff/roles";
 
 const NETWORK_MESSAGE =
@@ -93,6 +95,8 @@ export function SchoolClient({
   canViewClasses,
   canViewStudents,
   canViewStaff,
+  canReadGrading,
+  canManageGrading,
 }: {
   readonly email: string;
   readonly role: string;
@@ -105,6 +109,8 @@ export function SchoolClient({
   readonly canViewClasses: boolean;
   readonly canViewStudents: boolean;
   readonly canViewStaff: boolean;
+  readonly canReadGrading: boolean;
+  readonly canManageGrading: boolean;
 }) {
   const router = useRouter();
 
@@ -150,6 +156,16 @@ export function SchoolClient({
   const [editingSubjectId, setEditingSubjectId] = useState<string | null>(null);
   const [editSubjectName, setEditSubjectName] = useState("");
   const [editSubjectCode, setEditSubjectCode] = useState("");
+
+  const [bands, setBands] = useState<GradeBandSummary[] | null>(null);
+  const [bandError, setBandError] = useState<string | null>(null);
+  const [bandNotice, setBandNotice] = useState<string | null>(null);
+  const [bandMin, setBandMin] = useState("");
+  const [bandLabel, setBandLabel] = useState("");
+  const [bandRemark, setBandRemark] = useState("");
+  const [bandPassing, setBandPassing] = useState(true);
+  const [creatingBand, setCreatingBand] = useState(false);
+  const [busyBandId, setBusyBandId] = useState<string | null>(null);
 
   const [signingOut, setSigningOut] = useState(false);
 
@@ -230,6 +246,101 @@ export function SchoolClient({
       cancelled = true;
     };
   }, [canReadSubjects, subjectKey]);
+
+  useEffect(() => {
+    if (!canReadGrading) {
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const result = await getJson(
+        "/api/staff/grade-bands",
+        (payload) =>
+          (payload["bands"] as GradeBandSummary[] | undefined) ?? null,
+      );
+      if (cancelled) {
+        return;
+      }
+      if (result.ok) {
+        setBands(result.value);
+        setBandError(null);
+      } else {
+        setBandError(result.message);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [canReadGrading, subjectKey]);
+
+  async function handleCreateBand(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBandError(null);
+    setBandNotice(null);
+
+    const parsed = parseGradeBandCreateInput({
+      minPercentage: Number(bandMin),
+      label: bandLabel,
+      remark: bandRemark,
+      isPassing: bandPassing,
+    });
+    if (!parsed.ok) {
+      setBandError(parsed.message);
+      return;
+    }
+
+    setCreatingBand(true);
+    const created = await postJson("/api/staff/grade-bands", parsed.value);
+    setCreatingBand(false);
+
+    if (!created.ok) {
+      setBandError(created.message);
+      return;
+    }
+    setBandMin("");
+    setBandLabel("");
+    setBandRemark("");
+    setBandNotice("Grade band added.");
+    setBands(null);
+    setSubjectKey((key) => key + 1);
+  }
+
+  async function handleToggleBandPassing(band: GradeBandSummary) {
+    setBandError(null);
+    setBandNotice(null);
+    setBusyBandId(band.id);
+    const done = await postJson("/api/staff/grade-bands/update", {
+      bandId: band.id,
+      isPassing: !band.isPassing,
+    });
+    setBusyBandId(null);
+    if (!done.ok) {
+      setBandError(done.message);
+      return;
+    }
+    setBands(null);
+    setSubjectKey((key) => key + 1);
+  }
+
+  async function handleDeleteBand(band: GradeBandSummary) {
+    setBandError(null);
+    setBandNotice(null);
+    setBusyBandId(band.id);
+    const done = await postJson("/api/staff/grade-bands/update", {
+      bandId: band.id,
+      action: "delete",
+    });
+    setBusyBandId(null);
+    if (!done.ok) {
+      setBandError(done.message);
+      return;
+    }
+    setBandNotice(
+      "Grade band removed. Marks already recorded keep their score and percentage.",
+    );
+    setBands(null);
+    setSubjectKey((key) => key + 1);
+  }
 
   function reloadAcademic() {
     setYears(null);
@@ -1097,6 +1208,141 @@ export function SchoolClient({
                             onClick={() => void handleToggleSubject(subject)}
                           >
                             {subject.isActive ? "Deactivate" : "Reactivate"}
+                          </Button>
+                        </div>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardBody>
+          </Card>
+        ) : null}
+
+        {/* Grading bands */}
+        {canReadGrading ? (
+          <Card>
+            <CardHeader
+              title="Grading bands"
+              description="Your school’s own grading scale. Without bands, marks are still recorded and reported as percentages."
+              actions={
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    setBands(null);
+                    setSubjectKey((key) => key + 1);
+                  }}
+                  loading={bands === null && bandError === null}
+                >
+                  Refresh
+                </Button>
+              }
+            />
+            <CardBody className="stack stack--sm">
+              {bandNotice ? (
+                <Alert variant="success">{bandNotice}</Alert>
+              ) : null}
+              {bandError ? <Alert variant="error">{bandError}</Alert> : null}
+
+              <Alert variant="info">
+                A band covers everything from its minimum up to the next band.
+                Add bands from the lowest upwards: a new band that falls inside
+                an existing one is refused, because it would quietly change what
+                last term&rsquo;s grades mean.
+              </Alert>
+
+              {canManageGrading ? (
+                <form
+                  className="inline-form"
+                  onSubmit={handleCreateBand}
+                  noValidate
+                >
+                  <TextField
+                    label="Minimum %"
+                    name="bandMin"
+                    type="number"
+                    min={0}
+                    max={100}
+                    step="any"
+                    required
+                    value={bandMin}
+                    onChange={(event) => setBandMin(event.target.value)}
+                  />
+                  <TextField
+                    label="Label"
+                    name="bandLabel"
+                    autoComplete="off"
+                    required
+                    value={bandLabel}
+                    onChange={(event) => setBandLabel(event.target.value)}
+                  />
+                  <TextField
+                    label="Remark (optional)"
+                    name="bandRemark"
+                    autoComplete="off"
+                    value={bandRemark}
+                    onChange={(event) => setBandRemark(event.target.value)}
+                  />
+                  <span className="cluster">
+                    <input
+                      id="band-passing"
+                      type="checkbox"
+                      checked={bandPassing}
+                      onChange={(event) => setBandPassing(event.target.checked)}
+                    />
+                    <label htmlFor="band-passing">Counts as passing</label>
+                  </span>
+                  <Button type="submit" loading={creatingBand}>
+                    {creatingBand ? "Adding…" : "Add band"}
+                  </Button>
+                </form>
+              ) : (
+                <Alert variant="info">
+                  Your role can see the grading scale but not change it.
+                </Alert>
+              )}
+
+              {bands === null ? (
+                bandError === null ? (
+                  <p className="muted" role="status">
+                    Loading grading bands…
+                  </p>
+                ) : null
+              ) : bands.length === 0 ? (
+                <Alert variant="info">
+                  No grading bands configured. Marks will be recorded and
+                  reported as percentages only.
+                </Alert>
+              ) : (
+                <ul className="record-list">
+                  {bands.map((band) => (
+                    <li key={band.id} className="record">
+                      <div className="record__main">
+                        <p className="record__title">{band.label}</p>
+                        <p className="record__meta">
+                          {band.minPercentage}% and above
+                          {band.remark ? ` · ${band.remark}` : ""}
+                          {band.isPassing ? "" : " · does not count as passing"}
+                        </p>
+                      </div>
+                      {canManageGrading ? (
+                        <div className="record__actions">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            loading={busyBandId === band.id}
+                            onClick={() => void handleToggleBandPassing(band)}
+                          >
+                            {band.isPassing ? "Not passing" : "Passing"}
+                          </Button>
+                          <Button
+                            variant="danger"
+                            size="sm"
+                            loading={busyBandId === band.id}
+                            onClick={() => void handleDeleteBand(band)}
+                          >
+                            Remove
                           </Button>
                         </div>
                       ) : null}

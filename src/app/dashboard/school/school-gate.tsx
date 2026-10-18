@@ -35,6 +35,8 @@ export async function SchoolGate() {
     canViewClasses,
     canViewStudents,
     canViewStaff,
+    canReadGrading,
+    canManageGrading,
   ] = await Promise.all([
     context.hasPermission("school.manage"),
     context.hasPermission("academic.read"),
@@ -44,6 +46,8 @@ export async function SchoolGate() {
     context.hasPermission("class.read"),
     context.hasPermission("learner.read"),
     context.hasPermission("member.manage"),
+    context.hasPermission("grade.read"),
+    context.hasPermission("grade.manage"),
   ]);
 
   return (
@@ -59,6 +63,8 @@ export async function SchoolGate() {
       canViewClasses={canViewClasses}
       canViewStudents={canViewStudents}
       canViewStaff={canViewStaff}
+      canReadGrading={canReadGrading}
+      canManageGrading={canManageGrading}
     />
   );
 }

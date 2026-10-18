@@ -176,24 +176,37 @@ describe("global permission catalogue", () => {
     );
   });
 
-  it("gives the teacher only the attendance permissions, never administration", async () => {
+  it("gives the teacher only their own workflow permissions, never administration", async () => {
     await actAsUser(db, STAFF_A);
     const result = await db.query<{ permission: string }>(
       `select permission from public.role_permissions where role = 'teacher' order by permission`,
     );
 
     // D-021 started the teacher at zero permissions and the platform failed
-    // closed. D-030 deliberately relaxes that for the first teacher-facing
-    // feature: attendance on the classes they are assigned to. Nothing
-    // administrator-only may creep in, which is what this asserts.
-    expect(result.rows.map((row) => row.permission)).toEqual([
+    // closed. Two later decisions deliberately grant only what a teacher-facing
+    // workflow needs: D-030 attendance on the classes they are assigned to, and
+    // D-031 marking work on those same classes. Each is class-scoped in the
+    // database, not by these permissions. Nothing administrator-only may creep
+    // in, which is the substance of this assertion.
+    const granted = result.rows.map((row) => row.permission);
+    expect(granted).toEqual([
+      "assessment.manage",
+      "assessment.read",
       "attendance.correct",
       "attendance.read",
       "attendance.record",
+      "grade.read",
+      "result.record",
     ]);
 
     for (const adminOnly of [
+      // attendance
       "attendance.report",
+      // assessments and reporting
+      "result.read",
+      "grade.manage",
+      "report.read",
+      // everything that was already administrator-only
       "member.manage",
       "class.manage",
       "class.read",
@@ -208,9 +221,10 @@ describe("global permission catalogue", () => {
       "school.manage",
       "academic.read",
       "academic.manage",
+      "assignment.read",
       "assignment.manage",
     ]) {
-      expect(result.rows.map((row) => row.permission)).not.toContain(adminOnly);
+      expect(granted).not.toContain(adminOnly);
     }
   });
 });

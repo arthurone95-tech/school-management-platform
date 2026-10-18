@@ -46,3 +46,24 @@ export async function mgmtFetch(path, method, body) {
   }
   throw lastError;
 }
+
+/**
+ * Whether a migration version is recorded in the project's schema_migrations
+ * ledger.
+ *
+ * Used by `run-all.mjs` to add or skip a migration-gated live step with an
+ * explicit reason instead of letting it fail with "relation does not exist".
+ * Returns false when the Management API cannot answer, which fails safe: the
+ * step is skipped rather than run against an unknown schema.
+ */
+export async function isMigrationApplied(version) {
+  try {
+    const rows = await mgmtFetch("/database/query", "POST", {
+      query: `select version from supabase_migrations.schema_migrations
+              where version = '${version}' limit 1`,
+    });
+    return Array.isArray(rows) && rows.length > 0;
+  } catch {
+    return false;
+  }
+}

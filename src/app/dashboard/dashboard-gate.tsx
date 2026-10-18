@@ -42,6 +42,8 @@ export async function DashboardGate() {
     canReadSubjects,
     canRecordAttendance,
     canReadAttendance,
+    canReadAssessments,
+    canReadReport,
   ] = await Promise.all([
     context.hasPermission("member.manage"),
     context.hasPermission("learner.read"),
@@ -51,6 +53,8 @@ export async function DashboardGate() {
     context.hasPermission("subject.read"),
     context.hasPermission("attendance.record"),
     context.hasPermission("attendance.read"),
+    context.hasPermission("assessment.read"),
+    context.hasPermission("report.read"),
   ]);
 
   // The school settings page reveals whatever each permission allows; the nav
@@ -63,6 +67,10 @@ export async function DashboardGate() {
   // `attendance.report`, which is administrator-only (D-030).
   const canViewAttendance = canRecordAttendance || canReadAttendance;
 
+  // Results is the second teacher-facing page: a teacher who can mark reaches it
+  // on `assessment.read`, and an administrator on `report.read` (D-031).
+  const canViewResults = canReadAssessments || canReadReport;
+
   return (
     <DashboardClient
       email={context.email}
@@ -73,6 +81,7 @@ export async function DashboardGate() {
       canManageClasses={canManageClasses}
       canViewSettings={canViewSettings}
       canViewAttendance={canViewAttendance}
+      canViewResults={canViewResults}
     />
   );
 }

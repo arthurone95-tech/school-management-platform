@@ -51,6 +51,35 @@ async function ensureAuthUser(email, password) {
   return data.user.id;
 }
 
+/**
+ * The tables the cleanup below clears, in foreign-key-safe order.
+ *
+ * A migration may not be applied to the environment yet, so each table is
+ * checked before use and a missing one is skipped rather than failing the seed.
+ * That keeps the suite runnable against an environment that is behind the
+ * migrations, and it is also why this list is explicit about ordering: the
+ * restriction constraints are real, and deleting in the wrong order would leave
+ * orphaned rows and make a re-seed fail.
+ */
+const CLEANUP_TABLES = [
+  "assessment_results",
+  "assessments",
+  "attendance_records",
+  "attendance_sessions",
+  "grade_bands",
+  "learner_portal_credentials",
+  "learner_class_placements",
+  "learners",
+  "staff_assignments",
+  "staff_invitations",
+  "subjects",
+  "terms",
+  "academic_years",
+  "classes",
+  "school_members",
+  "audit_events",
+];
+
 /** Removes a previous run for the given school codes, in FK-safe order. */
 async function cleanupSchoolCode(code) {
   const { data: school } = await admin
@@ -60,6 +89,16 @@ async function cleanupSchoolCode(code) {
     .maybeSingle();
   if (!school) return;
 
+  // Only clear tables that actually exist in this environment, so the seed
+  // works before a pending migration has been applied.
+  const existing = new Set();
+  for (const table of CLEANUP_TABLES) {
+    const probe = await admin.from(table).select("*").limit(1);
+    if (!probe.error) {
+      existing.add(table);
+    }
+  }
+
   const { data: learners } = await admin
     .from("learners")
     .select("id, auth_user_id")
@@ -67,46 +106,67 @@ async function cleanupSchoolCode(code) {
   const learnerIds = (learners ?? []).map((l) => l.id);
   const authIds = (learners ?? []).map((l) => l.auth_user_id).filter(Boolean);
 
+  /** Clears one school-scoped table, or does nothing if it is not present. */
+  const clear = (table) => () => {
+    if (!existing.has(table)) {
+      return null;
+    }
+    return admin.from(table).delete().eq("school_id", school.id);
+  };
+
+  /** Clears rows keyed by learner, for the tables keyed that way. */
+  const clearForLearners = (table) => () => {
+    if (!existing.has(table) || learnerIds.length === 0) {
+      return null;
+    }
+    return admin.from(table).delete().in("learner_id", learnerIds);
+  };
+
+  /**
+   * The `learners` table itself is keyed by `id`, not by `learner_id`.
+   *
+   * Returned as a thunk like the others, so every entry in `steps` is a function
+   * and nothing runs before the loop reaches it.
+   */
+  const clearLearners = () => () => {
+    if (!existing.has("learners") || learnerIds.length === 0) {
+      return null;
+    }
+    return admin.from("learners").delete().in("id", learnerIds);
+  };
+
   const steps = [
-    // Attendance first: its records reference learners with ON DELETE RESTRICT,
-    // so they must go before the learners, and its sessions reference classes,
-    // subjects and terms.
-    () => admin.from("attendance_records").delete().eq("school_id", school.id),
-    () => admin.from("attendance_sessions").delete().eq("school_id", school.id),
-    () =>
-      learnerIds.length
-        ? admin
-            .from("learner_portal_credentials")
-            .delete()
-            .in("learner_id", learnerIds)
-        : null,
-    () =>
-      learnerIds.length
-        ? admin
-            .from("learner_class_placements")
-            .delete()
-            .in("learner_id", learnerIds)
-        : null,
-    () =>
-      learnerIds.length
-        ? admin.from("learners").delete().in("id", learnerIds)
-        : null,
+    // Results and attendance first: both reference learners with ON DELETE
+    // RESTRICT, and their parents reference classes, subjects, terms and years.
+    clear("assessment_results"),
+    clear("assessments"),
+    clear("grade_bands"),
+    clear("attendance_records"),
+    clear("attendance_sessions"),
+    clearForLearners("learner_portal_credentials"),
+    clearForLearners("learner_class_placements"),
+    clearLearners(),
     // Staff assignments reference classes and members with ON DELETE RESTRICT.
-    () => admin.from("staff_assignments").delete().eq("school_id", school.id),
-    () => admin.from("staff_invitations").delete().eq("school_id", school.id),
-    () => admin.from("subjects").delete().eq("school_id", school.id),
-    () => admin.from("terms").delete().eq("school_id", school.id),
-    () => admin.from("academic_years").delete().eq("school_id", school.id),
-    () => admin.from("classes").delete().eq("school_id", school.id),
-    () => admin.from("school_members").delete().eq("school_id", school.id),
+    clear("staff_assignments"),
+    clear("staff_invitations"),
+    clear("subjects"),
+    clear("terms"),
+    clear("academic_years"),
+    clear("classes"),
+    clear("school_members"),
     // Audit rows are append-only for users but must be cleared before the
     // school row (school_id -> schools uses ON DELETE RESTRICT). Deleting the
     // learners, classes and members above appended further audit rows.
-    () => admin.from("audit_events").delete().eq("school_id", school.id),
+    clear("audit_events"),
     () => admin.from("schools").delete().eq("id", school.id),
   ];
 
-  for (const step of steps) {
+  for (const [index, step] of steps.entries()) {
+    if (typeof step !== "function") {
+      throw new Error(
+        `cleanup ${code} failed: step ${index} is ${typeof step}, not a function`,
+      );
+    }
     const result = step();
     if (!result) continue;
     const { error } = await result;
