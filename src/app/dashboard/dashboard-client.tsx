@@ -112,6 +112,7 @@ export function DashboardClient({
   canViewSettings,
   canViewAttendance,
   canViewResults,
+  canViewData,
 }: {
   readonly email: string;
   readonly role: string;
@@ -122,6 +123,7 @@ export function DashboardClient({
   readonly canViewSettings: boolean;
   readonly canViewAttendance: boolean;
   readonly canViewResults: boolean;
+  readonly canViewData: boolean;
 }) {
   const router = useRouter();
 
@@ -346,6 +348,14 @@ export function DashboardClient({
                 href="/dashboard/results"
               >
                 Results
+              </Link>
+            ) : null}
+            {canViewData ? (
+              <Link
+                className="btn btn--secondary btn--sm"
+                href="/dashboard/data"
+              >
+                Import / export
               </Link>
             ) : null}
             {canViewSettings ? (
