@@ -200,6 +200,23 @@ Gates pass: format, lint, type-check, build, unit tests **285** (19 files; +66 f
 
 The exit criteria are claimed **for attendance only**. Assessments and results remain blocked on the unvalidated grading rules above, and academic summaries are limited to the per-class attendance report. Known limitations recorded in D-030: "today" is UTC rather than a configurable school timezone; nothing yet groups a report by term; there is no per-learner report page, no bulk import, and no offline capture.
 
+**Status 2026-10-18 (D-031):** the second Phase 4 slice closes the remaining three areas — **assessments and results**, **academic summaries and reports**, and **relevant teacher workflows** — which completes the Phase 4 capability list.
+
+The blocker was the documented grading gap: `docs/PRD.md` 11 records grading differences between schools as unvalidated, and the roadmap forbids inventing universal rules. It is resolved by making grading **school configuration rather than platform assumption**. `grade_bands` stores a school's own bands; a score's grade is the highest band it reaches; and **a school with no bands records marks and sees percentages with no grade**, which is the honest answer instead of an invented threshold. There is no default scale and no default pass mark.
+
+- **Assessments** record a class, optionally a subject and term, a name, a positive maximum and a date; retired by deactivation, never deleted. A `check_result_score` trigger rejects a score above the maximum, because that ceiling lives in another table and a check constraint cannot express it.
+- **Results** are records: no delete policy, no `DELETE` grant to `authenticated`, corrections are updates, and every change is audited. An absent row (never marked) and a null score (deliberately unmarked) are deliberately different things.
+- **Teacher scope reuses `can_access_class`** from D-030 rather than adding a second rule, and the roster comes from the same gated `class_roster`, so marking needs no `learner.read`.
+- **A band owns `[min, next min)` and creation refuses a band that would split an existing range**, which would silently regrade scores already recorded.
+- **Permissions.** Administrator: all seven. Teacher: `assessment.read`, `assessment.manage`, `result.record`, `grade.read` — enough to teach and mark, and explicitly **not** `grade.manage`, `result.read` or `report.read`.
+- **The class summary is an explicitly unweighted mean** of the marked percentages and reports `gradingIsConfigured: false` when no bands exist, rather than inventing a weighting rule.
+
+Endpoints: `GET`/`POST /api/staff/grade-bands`, `POST /api/staff/grade-bands/update`, `GET`/`POST /api/staff/assessments`, `POST /api/staff/assessments/update`, `GET`/`POST /api/staff/results`, `GET /api/staff/reports/academic`, and `/dashboard/results`. Grading bands are managed on the existing `/dashboard/school` page, where school configuration already lives.
+
+The **calculations and reports** exit criterion is met by 41 unit tests over the percentage and grade-boundary cases, checked against a representative Ghanaian scale, including the boundaries themselves and the no-bands-configured case. The **permissions** criterion is met by the PGlite suite plus the D-021 test, which now asserts the teacher's exact seven-permission set and that no administrator-only permission leaked in. The **consistency when operations fail or are repeated** criterion is met by whole-sheet submission (a partial sheet is refused, because it would look complete), upsert by `(assessment_id, learner_id)`, and the audit assertions. Known limitations recorded in D-031: no weighting, no position or rank, no per-assessment report card, no term-grouped summary, no moderation workflow, and no bulk mark import.
+
+**Migration not applied.** `20261018000009_phase4_assessments.sql` is written and verified by unit tests and PGlite, but was deliberately **not applied** to the dev project during the autonomous session. Its live suite `tests/live/15-results.mjs` is written and registered, and skips with an explicit reason until the migration is applied. See `docs/AUTONOMOUS_SESSION_REPORT.md` sections E and G.
+
 **Before this slice:** the dev project was found to hold an `attendance_sessions`/`attendance_records` schema recorded as `20261017000001_attendance.sql` with no source file in version control and weaker rules than approved (school-wide policies with no teacher class scope, no audit triggers, `DELETE` policies, no `attendance.report`). Both tables held zero rows; the owner authorised resetting it on 2026-10-17, and migrations `20261017000006`–`0008` replaced it. The seed cleanup in `tests/live/02-seed.mjs` was extended to delete attendance and the D-029 tables in dependency order, which it had not been doing.
 
 ### Phase 5: Additional modules and integrations
@@ -224,6 +241,20 @@ Exit criteria:
 - Security, privacy, and failure behavior are tested.
 - No module is enabled merely because its interface exists.
 
+**Status 2026-10-18 (D-032):** the first Phase 5 slice — **data import and export** — is implemented, chosen because it is the highest-value item for a school that already exists and the only one that can be built honestly without external accounts.
+
+**Import** (`POST /api/staff/import/learners`, `learner.import`) reads a learner's class list as CSV. Every row is validated by `parseEnrolmentInput` and written by `enrolLearner` — the same parser and operation the single-student form uses — on the caller's session client, so Row Level Security and the existing constraints apply unchanged and no new data path exists. Rows are validated independently and the response reports each row with its **file line number** and whether it was created. At most 100 usable rows per request.
+
+**Export** (`GET /api/staff/export`, `learner.export` / `report.export`) produces the whole roll, or one class's attendance or results over a bounded window, as `text/csv` with `Cache-Control: no-store`. Export is gated on its own permission rather than on `learner.read`, because it carries addresses and guardian contacts out of the system, and every export is recorded in the audit trail **by the database** (`record_data_export`) with `auth.uid()` as the actor, so the actor cannot be omitted or supplied by the caller.
+
+Safety details that matter: CSV quoting is handled properly (commas, doubled quotes, embedded newlines, CRLF) because real addresses contain them, and a leading spreadsheet formula character is neutralised on export because a child's name is untrusted input.
+
+Gates pass: format, lint, type-check, build, unit tests **399** (23 files; +45 for the CSV/import rules and the PGlite data-exchange guarantees).
+
+**Not implemented, and why.** Four of the six Phase 5 areas are recorded as deferred rather than half-built, because doing them badly would be worse than leaving them: **fees and payment integrations** need a provider account and create a financial commitment (`AUTOMATION_WORKFLOW.md` 4D); **parent or guardian access** needs a new external-facing role and a privacy decision that D-021 already deferred, and would give an external party access to children's records; **file uploads** need storage configuration that cannot be verified in this environment; **offline support** is rated a materially larger scope whose requirements `AUTOMATION_WORKFLOW.md` 9 says must not be decided independently. **Notifications and announcements** is the one remaining feasible item and is not built in this session.
+
+The exit criteria are claimed **for data import and export only**. **Migration `20261018000010_phase5_data_exchange.sql` is written and locally verified but NOT applied** — see `docs/AUTONOMOUS_SESSION_REPORT.md` sections E and G. Known limitations: learners only, no update mode for an existing registration number, no dry run, no downloadable error report, and no column selection on export.
+
 ### Phase 6: Pilot and production readiness
 
 Objectives:
@@ -242,6 +273,14 @@ Exit criteria:
 - No known critical security issue remains unresolved.
 - Recovery and operational procedures are documented and tested.
 - The owner explicitly approves the production release.
+
+**Status 2026-10-18: not started, and it cannot be started from this environment.** Every Phase 6 objective needs something outside the development environment, and claiming otherwise would be dishonest. The readiness assessment is in `docs/PRODUCTION_READINESS.md`; the short version:
+
+- **What is demonstrably met.** Authorization and tenant isolation are covered by the live suite (RLS/isolation 15 checks, including a revoked membership losing access through an existing live session) and by the PGlite suites, which now assert 99 database-level checks across ten tables, four `SECURITY DEFINER` scope helpers and every permission boundary. No privileged secret appears in the production bundle.
+- **What cannot be done here, and why.** A pilot needs a real, authorized school and real users. Backup and restoration must be tested against the D-022 targets (RPO 24 h, RTO 24 h) on the *chosen production provider's* plan, which is not configured. Vercel compatibility and cost are unvalidated (D-013). Performance has never been measured with representative data — there is no dataset larger than a seeded test school. Monitoring and incident procedures are documented but untested because no alerting exists. The Ghanaian privacy and retention review (D-023, `docs/SECURITY_AND_PRIVACY.md` 5) needs qualified advice, not an agent.
+- **Two release-blocking prerequisites remain.** The three unapplied migrations (`20261018000009`, `20261018000010`) mean the assessments and data-exchange features are unverified end to end, and the origin of the unversioned `20261017000001_attendance.sql` is still unexplained.
+
+Phase 6 is therefore correctly **not started**, and its exit criterion of "the owner explicitly approves the production release" is not one an agent can satisfy.
 
 ### Phase 7: Scale and improve
 

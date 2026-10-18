@@ -710,6 +710,109 @@ Document actual implemented behavior. Do not describe planned endpoints as opera
 - **Authorization:** the page is a user-experience gate only. The browser calls the API routes, which repeat every identity, school, permission and scope check, and `can_access_class` is the boundary that holds.
 - **Tests:** `tests/live/14-attendance.mjs` (the streamed redirect for an anonymous visitor).
 
+### 14.42 `GET/POST /api/staff/grade-bands` — the school's own grading scale (implemented 2026-10-18; D-031)
+
+- **Purpose:** lists and adds a school's grading bands. `docs/PRD.md` 11 records grading as differing between schools and unvalidated, so the platform stores a scale and never assumes one.
+- **Authentication:** Supabase session required. No session → `401`.
+- **Required permission:** `GET` `grade.read` (the teacher also holds it — marking against a scale you cannot see is not workable); `POST` `grade.manage`, administrator only. Missing permission → `403`.
+- **Request schema (POST, JSON):** `{ "minPercentage": number 0-100, "label": string 1-20, "remark"?: string ≤120 | null, "isPassing": boolean }`. A percentage outside 0–100 or a non-number → `400`; a blank label → `400`.
+- **Response schema:** `GET` → `{ "ok": true, "bands": [ { "id": uuid, "minPercentage": number, "label": string, "remark": string | null, "isPassing": boolean } ] }`; `POST` → `201` with `{ "ok": true, "band": ... }`.
+- **Errors:** `400` invalid body; `409` the band already exists at that minimum, **or** it would fall inside an existing band's range; `403`; `401`.
+- **The overlap rule:** a band owns `[min, next min)`. Adding one inside an existing range is refused because it would silently regrade scores already recorded — a 65 previously graded "D6" would become "C4". Only extending the scale downward, or editing a band, is allowed. The unique index cannot see a range overlap, so this is checked in the server operation.
+- **Tests:** `tests/live/15-results.mjs` (201, 400 out of range, 409 overlap, 409 duplicate, 403 for a teacher, 401).
+
+### 14.43 `POST /api/staff/grade-bands/update` — relabel, re-mark or remove a band (implemented 2026-10-18; D-031)
+
+- **Purpose:** changes a band's label, remark or passing flag, or removes it, behind `grade.manage`. **Removing a band cannot rewrite history**: a stored result keeps its score and percentage, so removal only affects future grading.
+- **Authentication:** Supabase session required. No session → `401`.
+- **Required permission:** `grade.manage`, administrator only. Missing permission → `403`.
+- **Request schema (JSON):** `{ "bandId": uuid, "label"?: string, "remark"?: string | null, "isPassing"?: boolean }`, at least one change; or `{ "bandId": uuid, "action": "delete" }`.
+- **Response schemas:** update → `{ "ok": true, "band": GradeBand }`; delete → `{ "ok": true }`.
+- **Errors:** `400` invalid body or no change; `404` the band is not in the caller's school; `403`; `401`.
+- **Tests:** `tests/live/15-results.mjs` (200 re-mark, 403 for a teacher on both update and delete, 401).
+
+### 14.44 `GET/POST /api/staff/assessments` — a class's assessments (implemented 2026-10-18; D-031)
+
+- **Purpose:** `GET` lists assessments behind `assessment.read`; `POST` creates one behind `assessment.manage`. `?includeInactive=true` also returns retired ones; the default is active-only.
+- **Authentication:** Supabase session required. No session → `401`.
+- **Required permission:** as above; missing permission → `403`.
+- **Request schema (POST, JSON):** `{ "classId": uuid, "name": string 1-80, "maxScore": number >0 ≤99999.99, "assessedOn": "YYYY-MM-DD", "subjectId"?: uuid, "termId"?: uuid, "notes"?: string ≤200 }`. A missing class, a non-positive or oversized maximum, a malformed date, or a future date → `400`.
+- **Response schemas:** `GET` → `{ "ok": true, "assessments": [ { "id", "classId", "className", "subjectId", "subjectName", "termId", "name", "maxScore", "assessedOn", "notes", "isActive", "markedCount", "learnerCount" } ] }`; `POST` → `201` with `{ "ok": true, "assessment": AssessmentSummary }`.
+- **Errors:** `400` invalid body; `404` the class is not one the caller may teach; `409` a constraint conflict; `403`; `401`.
+- **Teacher scope:** the read and the insert run on the caller's session client under policies gated on `can_access_class`, so a teacher sees and creates assessments only for their assigned classes — the same boundary attendance uses (migration 0006).
+- **Tests:** `tests/live/15-results.mjs` (201, 400 no class, 400 future date, 404 unassigned class, 404/400 cross-school, cross-school listing empty, 401).
+
+### 14.45 `POST /api/staff/assessments/update` — rename, re-date or retire an assessment (implemented 2026-10-18; D-031)
+
+- **Purpose:** changes an assessment's name, maximum, date, notes or active flag, behind `assessment.manage`, scoped by `can_access_class`. Retired by `isActive: false`, following the retire-by-deactivation pattern (D-028, D-029); marks already recorded are kept.
+- **Authentication:** Supabase session required. No session → `401`.
+- **Request schema (JSON):** `{ "assessmentId": uuid, ... }` with at least one of `name`, `maxScore`, `assessedOn`, `notes`, `isActive`. A future `assessedOn` → `400`.
+- **Response schema (200):** `{ "ok": true, "assessment": AssessmentSummary }`.
+- **Errors:** `400` invalid body, no change, or a future date; `404` the assessment is not the caller's; `409` the new maximum is below a mark already recorded — rejected by the score trigger, so marks are never silently invalidated; `403`; `401`.
+- **Tests:** `tests/live/15-results.mjs` (200 retire, 400 marks refused afterwards, marks still present, 401).
+
+### 14.46 `GET/POST /api/staff/results` — read and record a result sheet (implemented 2026-10-18; D-031)
+
+- **Purpose:** `GET` returns one assessment's sheet — the class roster with each learner's mark, percentage and the grade the school's bands give it — behind `assessment.read`. `POST` writes the whole sheet behind `result.record`.
+- **Authentication:** Supabase session required. No session → `401`.
+- **Required permission:** `GET` `assessment.read`; `POST` `result.record`. Missing permission → `403`.
+- **Request schema (POST, JSON):** `{ "assessmentId": uuid, "entries": [ { "learnerId": uuid, "score": number | null, "remark"?: string ≤200 } ] }`. At least one entry, at most 200; a repeated `learnerId` → `400`; a non-numeric or negative score, or one above the assessment maximum, → `400` with the bound named.
+- **Response schema (200):** `{ "ok": true, "sheet": { "assessment": AssessmentSummary, "entries": [ { "learnerId", "registrationNumber", "fullName", "score", "percentage", "grade", "remark" } ], "isEditable": boolean } }`.
+- **Errors:** `400` invalid body, a learner who is not in the class, or a retired assessment; `404` the assessment is not the caller's; `403`; `401`.
+- **Whole-sheet submission:** every learner currently in the class must be marked exactly once. A partial sheet is refused because an incomplete one is indistinguishable from a complete one and would silently understate results. Writes upsert by `(assessment_id, learner_id)`, so re-saving unchanged marks is idempotent.
+- **Least privilege:** the roster comes from the gated `class_roster` function, so marking needs no `learner.read` and exposes no learner field beyond id, registration number and name.
+- **No delete:** a mark is corrected by writing it again, and every change is audited.
+- **Tests:** `tests/live/15-results.mjs` (200 read and write, 404 cross-school, 400 above maximum / repeated learner / unknown learner, grade resolved from the school's bands, a zero mark given no invented grade, read-only once retired, 404 for an unassigned teacher, 401).
+
+### 14.47 `GET /api/staff/reports/academic` — the class academic summary (implemented 2026-10-18; D-031)
+
+- **Purpose:** a class's assessments with average, highest, lowest and pass counts, plus a per-learner average and best grade. This is the "academic summaries and reports" area of Phase 4.
+- **Authentication:** Supabase session required. No session → `401`.
+- **Required permission:** `report.read`, **administrator only**. A teacher → `403`, deliberately: class-scoped `assessment.read` must not widen into a whole-class view.
+- **Query parameters:** `classId` (uuid, **required**), `from` and `to` (`YYYY-MM-DD`, optional). A missing or malformed class → `400`; an inverted window → `400`.
+- **Response schema (200):** `{ "ok": true, "report": { "classId", "className", "from", "to", "gradingIsConfigured": boolean, "assessments": [ { "assessmentId", "name", "maxScore", "assessedOn", "averagePercentage", "highestPercentage", "lowestPercentage", "passedCount", "markedCount", "learnerCount" } ], "learners": [ { "learnerId", "registrationNumber", "fullName", "averagePercentage", "bestGrade", "assessmentsTaken" } ] } }`.
+- **Errors:** `400`; `404` the class is not visible to the caller; `403`; `401`.
+- **The averages are explicitly unweighted** arithmetic means of the marked percentages, and `gradingIsConfigured` is `false` when the school has no bands, so the interface can say so plainly. Weighting is a grading rule `docs/PRD.md` 11 records as unvalidated.
+- **Tests:** `tests/live/15-results.mjs` (200, marked count matches, `gradingIsConfigured` true, 403 for a teacher and for an unassigned teacher, 404 cross-school, 400 no class, 401).
+
+### 14.48 `GET /dashboard/results` — assessments, marks and the class summary (implemented 2026-10-18; D-031)
+
+- **Purpose:** the session-gated page behind the endpoints above. Shows the assessments for a chosen class, records marks, and — for a `report.read` holder — the class summary.
+- **Authentication:** a prerenderable shell with the session-dependent part behind `<Suspense>`; an anonymous visitor is redirected to `/sign-in`, and a caller with neither `assessment.read` nor `report.read` is redirected to `/dashboard`.
+- **Authorization:** a user-experience gate only. A row shows "no grade scale configured" rather than a blank when the school has no bands.
+- **Tests:** `tests/live/15-results.mjs` (the streamed redirect).
+
+### 14.49 `GET /api/staff/export` — CSV export (implemented 2026-10-18; D-032)
+
+- **Purpose:** exports the school's data as CSV. `?kind=learners` gives the whole roll with the current class; `?kind=attendance` or `?kind=results` with `classId`, `from` and `to` gives one class's sheet over a window.
+- **Authentication:** Supabase session required. No session → `401`.
+- **Required permission:** `learner.export` for `kind=learners`; `report.export` for the class sheets. Both are administrator-only. Missing permission → `403`. Export deliberately does **not** ride on `learner.read`, because an export carries addresses and guardian phone numbers out of the system.
+- **Response schema (200):** `text/csv; charset=utf-8` with `Content-Disposition: attachment`, `Cache-Control: no-store` and an `X-Row-Count` header. Not a JSON body.
+- **Errors:** `400` a missing class, a malformed or inverted window, a window of 366 days or more, or an unknown `kind`; `500` the export could not be produced; `403`; `401`.
+- **Bounds:** at most 5000 rows and a window capped at 366 days, so an export cannot become an unbounded read.
+- **Audited:** every export calls `record_data_export`, a `SECURITY DEFINER` function that appends to `audit_events` with `auth.uid()` as the actor. The caller cannot supply or omit the actor, and a caller with no active membership cannot record the event at all, so it cannot happen.
+- **CSV safety:** a value beginning `=`, `+`, `-`, `@`, tab or CR is written with a leading apostrophe, so a spreadsheet cannot execute it as a formula — a child's name is untrusted input.
+- **Database tables:** `learners`, `learner_class_placements`, `classes` (learners); `attendance_sessions`, `attendance_records` (attendance); `assessments`, `assessment_results` (results). All read on the caller's session client.
+- **Tests:** the CSV rules are covered by 34 unit tests and the audit behaviour by the PGlite suite. **This endpoint is not yet live-verified.**
+
+### 14.50 `POST /api/staff/import/learners` — bulk learner import (implemented 2026-10-18; D-032)
+
+- **Purpose:** imports a learner's existing class list from CSV.
+- **Authentication:** Supabase session required. No session → `401`.
+- **Required permission:** `learner.import`, administrator only. Missing permission → `403`.
+- **Request schema (JSON):** `{ "csv": string }`, the raw file text. A missing or empty `csv`, an unparseable file, a file missing a required column, or more than 100 usable rows → `400`; a body over 2 MB → `413`.
+- **Required columns:** `registration_number`, `first_name`, `last_name`, `gender`, `date_of_birth`, `residential_address`, `guardian_phone`, `class_name`. Optional: `guardian_email`. Matching ignores case, spaces and underscores. A missing **required** column refuses the file; unknown columns are reported as ignored.
+- **Response schema (200):** `{ "ok": true, "created": number, "completedPlacement": number, "failed": number, "results": [ { "row": number, "registrationNumber", "learnerId", "created": boolean, "message": string | null } ], "issues": [ { "row": number, "registrationNumber", "message" } ], "ignoredColumns": string[] }`.
+- **Per-row reporting:** rows are validated independently and every row is reported with its **file line number**, so a school fixes specific lines and re-imports rather than starting over. A class name that is not an existing active class is an issue on that row, not a learner created without one.
+- **No new write path:** each row is validated by `parseEnrolmentInput` and written by `enrolLearner` — the same parser and operation as the single-student form — on the caller's session client, so RLS, the composite foreign keys and the uniqueness constraints apply unchanged.
+- **Tests:** 34 CSV and import unit tests. **Not yet live-verified.**
+
+### 14.51 `GET /dashboard/data` — import and export page (implemented 2026-10-18; D-032)
+
+- **Purpose:** the session-gated page behind the export and import endpoints, showing the exact expected header row and a worked example, and listing every imported row with its line number.
+- **Authentication:** a prerenderable shell with the session-dependent part behind `<Suspense>`; an anonymous visitor is redirected to `/sign-in`, and a caller with none of the three permissions is redirected to `/dashboard`.
+- **Authorization:** a user-experience gate only; the file is read in the browser and posted to this application's own server and nowhere else.
+
 ## 15. Implementation Gate
 
 Implement only the operations required for the selected end-to-end workflow.
