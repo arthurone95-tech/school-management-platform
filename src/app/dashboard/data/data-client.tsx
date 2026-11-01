@@ -230,31 +230,6 @@ export function DataClient({
 
   return (
     <>
-      <header className="app-header">
-        <div className="app-header__inner">
-          <div className="brand">
-            <span className="brand__name">{schoolName ?? "Your school"}</span>
-            <span className="brand__context">
-              {roleLabel(role)}
-              {email ? ` · ${email}` : ""}
-            </span>
-          </div>
-          <div className="cluster cluster--end">
-            <Link className="btn btn--secondary btn--sm" href="/dashboard">
-              Dashboard
-            </Link>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => void handleSignOut()}
-              loading={signingOut}
-            >
-              {signingOut ? "Signing out…" : "Sign out"}
-            </Button>
-          </div>
-        </div>
-      </header>
-
       <div className="container stack">
         <div className="stack stack--sm">
           <h1>Import and export</h1>

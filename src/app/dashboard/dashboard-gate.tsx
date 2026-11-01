@@ -3,27 +3,12 @@ import "server-only";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 
+import { utcDaysAgo, utcToday } from "@/lib/dates";
 import { loadStaffContext } from "@/lib/server/staff-context";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-import { DashboardClient } from "./dashboard-client";
+import { DashboardClient, type DashboardMetrics } from "./dashboard-client";
 
-/**
- * Session-gated half of the dashboard.
- *
- * It reads the request cookies, so it must render inside the page's `<Suspense>`
- * boundary. Anyone without an active staff membership is redirected to sign-in.
- * This is a user-experience gate only: the invitation APIs repeat the same
- * identity, school and permission checks server-side, and those are the actual
- * authorization boundary.
- *
- * `connection()` stops prerendering at this point so the whole gate — including
- * the session lookup and the clock reads inside the auth client — runs only at
- * request time. Without it, Next.js still walks this subtree during the
- * prerender pass and reports the unstable time value
- * (`blocking-prerender-current-time`) even though the output is correctly
- * deferred behind `<Suspense>`.
- */
 export async function DashboardGate() {
   await connection();
 
@@ -33,67 +18,69 @@ export async function DashboardGate() {
     redirect("/sign-in");
   }
 
+  const schoolId = context.schoolId;
+
   const [
-    canManageMembers,
-    canViewStudents,
-    canManageClasses,
-    canManageSchool,
-    canReadAcademic,
-    canReadSubjects,
-    canRecordAttendance,
-    canReadAttendance,
-    canReadAssessments,
-    canReadReport,
-    canImportLearners,
-    canExportLearners,
-    canExportReports,
+    { count: totalStudents },
+    { count: totalTeachers },
+    { count: totalClasses },
+    { data: currentYear },
   ] = await Promise.all([
-    context.hasPermission("member.manage"),
-    context.hasPermission("learner.read"),
-    context.hasPermission("class.manage"),
-    context.hasPermission("school.manage"),
-    context.hasPermission("academic.read"),
-    context.hasPermission("subject.read"),
-    context.hasPermission("attendance.record"),
-    context.hasPermission("attendance.read"),
-    context.hasPermission("assessment.read"),
-    context.hasPermission("report.read"),
-    context.hasPermission("learner.import"),
-    context.hasPermission("learner.export"),
-    context.hasPermission("report.export"),
+    supabase
+      .from("learners")
+      .select("id", { count: "exact", head: true })
+      .eq("school_id", schoolId),
+    supabase
+      .from("school_members")
+      .select("id", { count: "exact", head: true })
+      .eq("school_id", schoolId)
+      .eq("role", "teacher")
+      .eq("status", "active"),
+    supabase
+      .from("classes")
+      .select("id", { count: "exact", head: true })
+      .eq("school_id", schoolId)
+      .eq("is_active", true),
+    supabase
+      .from("academic_years")
+      .select("id, name, terms ( id, name, starts_on, ends_on )")
+      .eq("school_id", schoolId)
+      .eq("is_current", true)
+      .maybeSingle(),
   ]);
 
-  // The school settings page reveals whatever each permission allows; the nav
-  // shows the link only when there is something there for this caller to see
-  // (D-029).
-  const canViewSettings = canManageSchool || canReadAcademic || canReadSubjects;
+  const today = utcToday();
+  let activeTerm: string | null = null;
+  if (currentYear) {
+    const terms = (currentYear.terms ?? []) as {
+      name: string;
+      starts_on: string;
+      ends_on: string;
+    }[];
+    const current = terms.find(
+      (t) => t.starts_on <= today && today <= t.ends_on,
+    );
+    activeTerm = current
+      ? `${current.name} (${currentYear.name as string})`
+      : terms.length > 0
+        ? `${terms[0].name} (${currentYear.name as string})`
+        : (currentYear.name as string);
+  }
 
-  // Attendance is the first page a teacher has any access to, so the nav links
-  // it on `attendance.record` or `attendance.read` rather than on
-  // `attendance.report`, which is administrator-only (D-030).
-  const canViewAttendance = canRecordAttendance || canReadAttendance;
+  const sevenDaysAgo = utcDaysAgo(7);
+  const { count: recentActivityCount } = await supabase
+    .from("audit_events")
+    .select("id", { count: "exact", head: true })
+    .eq("school_id", schoolId)
+    .gte("created_at", sevenDaysAgo);
 
-  // Results is the second teacher-facing page: a teacher who can mark reaches it
-  // on `assessment.read`, and an administrator on `report.read` (D-031).
-  const canViewResults = canReadAssessments || canReadReport;
+  const metrics: DashboardMetrics = {
+    totalStudents: totalStudents ?? 0,
+    totalTeachers: totalTeachers ?? 0,
+    totalClasses: totalClasses ?? 0,
+    activeTerm,
+    recentActivityCount: recentActivityCount ?? 0,
+  };
 
-  // Import and export are administrator-only acts (D-032), so the nav shows the
-  // link when the caller has any one of them.
-  const canViewData =
-    canImportLearners || canExportLearners || canExportReports;
-
-  return (
-    <DashboardClient
-      email={context.email}
-      role={context.role}
-      schoolName={context.schoolName}
-      canManageMembers={canManageMembers}
-      canViewStudents={canViewStudents}
-      canManageClasses={canManageClasses}
-      canViewSettings={canViewSettings}
-      canViewAttendance={canViewAttendance}
-      canViewResults={canViewResults}
-      canViewData={canViewData}
-    />
-  );
+  return <DashboardClient schoolName={context.schoolName} metrics={metrics} />;
 }

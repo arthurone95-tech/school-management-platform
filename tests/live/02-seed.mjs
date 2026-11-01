@@ -136,9 +136,10 @@ async function cleanupSchoolCode(code) {
   };
 
   const steps = [
-    // Results and attendance first: both reference learners with ON DELETE
-    // RESTRICT, and their parents reference classes, subjects, terms and years.
-    clear("assessment_results"),
+    // Attendance first: it references learners with ON DELETE RESTRICT, and its
+    // parent references classes. Results are never deleted directly (the
+    // migration grants no DELETE on assessment_results); removing their
+    // assessment cascades to them.
     clear("assessments"),
     clear("grade_bands"),
     clear("attendance_records"),

@@ -117,6 +117,8 @@ export function isLearnerStatus(value: string): value is LearnerStatus {
   return (LEARNER_STATUSES as readonly string[]).includes(value);
 }
 
+export type LearnerStatusFilter = LearnerStatus | "all";
+
 const FIRST_NAME_MESSAGE = "Enter the student's first name.";
 const LAST_NAME_MESSAGE = "Enter the student's last name.";
 const CLASS_ID_MESSAGE = "Choose a class for the student.";
@@ -331,7 +333,8 @@ export function parsePageParam(raw: string | null): number {
  * cannot accidentally widen the query to every record (D-023: inactive records
  * are not part of routine operational views).
  */
-export function parseLearnerStatusFilter(raw: string | null): LearnerStatus {
+export function parseLearnerStatusFilter(raw: string | null): LearnerStatusFilter {
+  if (raw === "all") return "all";
   return raw === "inactive" ? "inactive" : "active";
 }
 

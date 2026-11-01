@@ -34,8 +34,10 @@ export async function GET(request: Request): Promise<NextResponse> {
   const url = new URL(request.url);
   const page = parsePageParam(url.searchParams.get("page"));
   const status = parseLearnerStatusFilter(url.searchParams.get("status"));
+  const search = url.searchParams.get("search") ?? undefined;
+  const classId = url.searchParams.get("classId") ?? undefined;
 
-  const result = await listLearners(supabase, access.schoolId, page, status);
+  const result = await listLearners(supabase, access.schoolId, page, status, search, classId);
   if (result === null) {
     return json({ ok: false, error: "The students could not be loaded." }, 500);
   }

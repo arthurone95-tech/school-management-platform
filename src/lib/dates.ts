@@ -43,6 +43,11 @@ export function utcToday(): string {
   return formatUtcDate(new Date());
 }
 
+/** ISO timestamp for `days` ago, in UTC. */
+export function utcDaysAgo(days: number): string {
+  return new Date(Date.now() - days * 86_400_000).toISOString();
+}
+
 /** Whole days from `from` to `to`; negative when `to` precedes `from`. */
 export function daysBetween(from: string, to: string): number {
   const start = Date.parse(`${from}T00:00:00Z`);

@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
-import { SelectField } from "@/components/ui/form";
+import { SelectField, TextField } from "@/components/ui/form";
 import {
   ATTENDANCE_STATUS_LABELS,
   ATTENDANCE_STATUSES,
@@ -153,6 +153,7 @@ export function AttendanceClient({
   const [report, setReport] = useState<AttendanceClassReport | null>(null);
   const [reportError, setReportError] = useState<string | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
+  const [rosterSearch, setRosterSearch] = useState("");
 
   const [signingOut, setSigningOut] = useState(false);
 
@@ -369,31 +370,6 @@ export function AttendanceClient({
 
   return (
     <>
-      <header className="app-header">
-        <div className="app-header__inner">
-          <div className="brand">
-            <span className="brand__name">{schoolName ?? "Your school"}</span>
-            <span className="brand__context">
-              {roleLabel(role)}
-              {email ? ` · ${email}` : ""}
-            </span>
-          </div>
-          <div className="cluster cluster--end">
-            <Link className="btn btn--secondary btn--sm" href="/dashboard">
-              Dashboard
-            </Link>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => void handleSignOut()}
-              loading={signingOut}
-            >
-              {signingOut ? "Signing out…" : "Sign out"}
-            </Button>
-          </div>
-        </div>
-      </header>
-
       <div className="container stack">
         <div className="stack stack--sm">
           <h1>Attendance</h1>
@@ -423,7 +399,7 @@ export function AttendanceClient({
                       onChange={(event) => selectClass(event.target.value)}
                       options={[
                         { value: "", label: "Choose a class" },
-                        ...classes.map((klass) => ({
+                        ...(classes ?? []).map((klass) => ({
                           value: klass.id,
                           label: klass.isActive
                             ? klass.name
@@ -548,8 +524,26 @@ export function AttendanceClient({
                     </Alert>
                   ) : (
                     <form className="stack" onSubmit={saveRegister}>
+                      <TextField
+                        label="Search learners"
+                        name="roster-search"
+                        type="search"
+                        placeholder="Name or registration number"
+                        value={rosterSearch}
+                        onChange={(event) => setRosterSearch(event.target.value)}
+                      />
                       <ul className="record-list">
-                        {register.roster.map((learner) => {
+                        {register.roster
+                          .filter((learner) =>
+                            rosterSearch.trim() === "" ||
+                            learner.fullName
+                              .toLowerCase()
+                              .includes(rosterSearch.toLowerCase()) ||
+                            learner.registrationNumber
+                              .toLowerCase()
+                              .includes(rosterSearch.toLowerCase()),
+                          )
+                          .map((learner) => {
                           const current =
                             marks[learner.learnerId]?.status ?? "present";
                           return (
@@ -660,7 +654,7 @@ export function AttendanceClient({
                     onChange={(event) => selectClass(event.target.value)}
                     options={[
                       { value: "", label: "Choose a class" },
-                      ...classes.map((klass) => ({
+                      ...(classes ?? []).map((klass) => ({
                         value: klass.id,
                         label: klass.name,
                       })),

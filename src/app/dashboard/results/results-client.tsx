@@ -7,7 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
-import { SelectField } from "@/components/ui/form";
+import { SelectField, TextField } from "@/components/ui/form";
 import {
   parseAssessmentCreateInput,
   parseResultSubmitInput,
@@ -144,6 +144,7 @@ export function ResultsClient({
   );
   const [sheet, setSheet] = useState<ResultSheet | null>(null);
   const [scores, setScores] = useState<Scores>({});
+  const [rosterSearch, setRosterSearch] = useState("");
   const [saving, setSaving] = useState(false);
 
   const [report, setReport] = useState<ClassAcademicReport | null>(null);
@@ -424,31 +425,6 @@ export function ResultsClient({
 
   return (
     <>
-      <header className="app-header">
-        <div className="app-header__inner">
-          <div className="brand">
-            <span className="brand__name">{schoolName ?? "Your school"}</span>
-            <span className="brand__context">
-              {roleLabel(role)}
-              {email ? ` · ${email}` : ""}
-            </span>
-          </div>
-          <div className="cluster cluster--end">
-            <Link className="btn btn--secondary btn--sm" href="/dashboard">
-              Dashboard
-            </Link>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => void handleSignOut()}
-              loading={signingOut}
-            >
-              {signingOut ? "Signing out…" : "Sign out"}
-            </Button>
-          </div>
-        </div>
-      </header>
-
       <div className="container stack">
         <div className="stack stack--sm">
           <h1>Results</h1>
@@ -639,8 +615,22 @@ export function ResultsClient({
                 </Alert>
               ) : (
                 <form className="stack" onSubmit={saveSheet}>
+                  <TextField
+                    label="Search learners"
+                    name="roster-search"
+                    type="search"
+                    placeholder="Name or registration number"
+                    value={rosterSearch}
+                    onChange={(event) => setRosterSearch(event.target.value)}
+                  />
                   <ul className="record-list">
-                    {sheet.entries.map((entry) => (
+                    {sheet.entries
+                      .filter((entry) =>
+                        rosterSearch.trim() === "" ||
+                        entry.fullName.toLowerCase().includes(rosterSearch.toLowerCase()) ||
+                        entry.registrationNumber.toLowerCase().includes(rosterSearch.toLowerCase()),
+                      )
+                      .map((entry) => (
                       <li key={entry.learnerId} className="record">
                         <div className="record__main">
                           <p className="record__title">{entry.fullName}</p>

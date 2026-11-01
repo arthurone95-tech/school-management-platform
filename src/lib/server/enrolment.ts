@@ -184,17 +184,53 @@ export async function listLearners(
   supabase: ServerClient,
   schoolId: string,
   page: number,
-  status: LearnerStatus = "active",
+  status: LearnerStatus | "all" = "active",
+  search?: string,
+  classId?: string,
 ): Promise<LearnerPage | null> {
   const size = LEARNER_PAGE_SIZE;
   const from = (page - 1) * size;
   const to = from + size - 1;
 
-  const { data, error, count } = await supabase
+  let query = supabase
     .from("learners")
     .select(LEARNER_COLUMNS, { count: "exact" })
-    .eq("school_id", schoolId)
-    .eq("status", status)
+    .eq("school_id", schoolId);
+
+  if (status !== "all") {
+    query = query.eq("status", status);
+  }
+
+  // Optional class filter: only learners whose current placement is in that class.
+  if (classId) {
+    const { data: placements, error: placementError } = await supabase
+      .from("learner_class_placements")
+      .select("learner_id")
+      .eq("school_id", schoolId)
+      .eq("class_id", classId)
+      .is("ended_at", null);
+    if (placementError) {
+      return null;
+    }
+    const ids = (placements ?? []).map((row) => row.learner_id as string);
+    if (ids.length === 0) {
+      return { learners: [], page, pageSize: size, total: 0 };
+    }
+    query = query.in("id", ids);
+  }
+
+  // Optional name/username/registration-number search.
+  const term = (search ?? "").trim();
+  if (term.length > 0) {
+    const safe = term.replace(/[%_]/g, "");
+    if (safe.length > 0) {
+      query = query.or(
+        `first_name.ilike.%${safe}%,last_name.ilike.%${safe}%,username.ilike.%${safe}%,registration_number.ilike.%${safe}%`,
+      );
+    }
+  }
+
+  const { data, error, count } = await query
     .order("created_at", { ascending: false })
     .order("id", { ascending: true })
     .range(from, to);

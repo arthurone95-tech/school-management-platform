@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { DashboardGate } from "./dashboard-gate";
 
 export const metadata: Metadata = {
-  title: "Staff dashboard | School Management Platform",
+  title: "School overview | School Management Platform",
 };
 
 /**

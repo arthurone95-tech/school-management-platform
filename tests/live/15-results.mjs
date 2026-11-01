@@ -97,6 +97,7 @@ async function main() {
   const sessionB = await signIn(adminB.email, adminB.password);
   const todayIso = today();
   const suffix = crypto.randomUUID().slice(0, 6).toUpperCase();
+  const assessmentMax = 40;
 
   const { data: aClasses } = await admin
     .from("classes")
@@ -174,17 +175,9 @@ async function main() {
   // Two bands this run owns, at bounds nothing else uses.
   const firstMin = 61 + (Number.parseInt(suffix.slice(0, 2), 16) % 20);
   const secondMin = firstMin + 20;
-  const lowBand = await appPostJson(
-    "/api/staff/grade-bands",
-    { minPercentage: firstMin, label: `X${suffix}`, isPassing: true },
-    sessionA.header(),
-  );
-  report.check(
-    lowBand.status === 201,
-    "an administrator adds the lower band of a scale (201)",
-    `status=${lowBand.status} min=${firstMin}`,
-  );
-
+  // Bands are half-open intervals [min, next min), and the top band is open
+  // ended. Adding the upper bound first leaves room to add the lower one; the
+  // reverse order would be refused because it would split an existing range.
   const highBand = await appPostJson(
     "/api/staff/grade-bands",
     { minPercentage: secondMin, label: `Y${suffix}`, isPassing: true },
@@ -192,8 +185,19 @@ async function main() {
   );
   report.check(
     highBand.status === 201,
-    "an administrator adds a band above it (201)",
+    "an administrator adds the upper band of a scale (201)",
     `status=${highBand.status} min=${secondMin}`,
+  );
+
+  const lowBand = await appPostJson(
+    "/api/staff/grade-bands",
+    { minPercentage: firstMin, label: `X${suffix}`, isPassing: true },
+    sessionA.header(),
+  );
+  report.check(
+    lowBand.status === 201,
+    "an administrator adds a band below it (201)",
+    `status=${lowBand.status} min=${firstMin}`,
   );
 
   const overlap = await appPostJson(
@@ -349,7 +353,7 @@ async function main() {
     {
       classId: assignedClass,
       name: `Live check ${suffix}`,
-      maxScore: 40,
+      maxScore: assessmentMax,
       assessedOn: assessmentDate,
     },
     sessionT.header(),
@@ -433,7 +437,8 @@ async function main() {
     "/api/staff/results",
     {
       assessmentId,
-      entries: [{ learnerId: entries[0]?.learnerId, score: 41 }],
+      maxScore: assessmentMax,
+      entries: [{ learnerId: entries[0]?.learnerId, score: assessmentMax + 1 }],
     },
     sessionT.header(),
   );
@@ -445,7 +450,14 @@ async function main() {
 
   const badStatus = await appPostJson(
     "/api/staff/results",
-    { assessmentId, entries: [{ learnerId: entries[0]?.learnerId }] },
+    {
+      assessmentId,
+      maxScore: assessmentMax,
+      entries: [
+        { learnerId: entries[0]?.learnerId },
+        { learnerId: entries[0]?.learnerId },
+      ],
+    },
     sessionT.header(),
   );
   report.check(
@@ -460,6 +472,7 @@ async function main() {
     "/api/staff/results",
     {
       assessmentId,
+      maxScore: assessmentMax,
       entries: [
         { learnerId: entries[0]?.learnerId, score: 10 },
         { learnerId: entries[0]?.learnerId, score: 20 },
@@ -477,6 +490,7 @@ async function main() {
     "/api/staff/results",
     {
       assessmentId,
+      maxScore: assessmentMax,
       entries: [
         {
           learnerId: "00000000-0000-4000-8000-0000000000ee",
@@ -501,7 +515,7 @@ async function main() {
 
   const saved = await appPostJson(
     "/api/staff/results",
-    { assessmentId, entries: marks },
+    { assessmentId, maxScore: assessmentMax, entries: marks },
     sessionT.header(),
   );
   const savedEntries = saved.payload?.sheet?.entries ?? [];
@@ -515,8 +529,8 @@ async function main() {
 
   const top = savedEntries[0];
   report.check(
-    top?.percentage === 100 && top?.grade?.label === `X${suffix}`,
-    "a full mark is 100% and lands in the lower band added this run",
+    top?.percentage === 100 && top?.grade?.label === `Y${suffix}`,
+    "a full mark is 100% and lands in the upper band added this run",
     `percentage=${top?.percentage} grade=${top?.grade?.label}`,
   );
 
@@ -593,7 +607,7 @@ async function main() {
 
   const writeAfterRetire = await appPostJson(
     "/api/staff/results",
-    { assessmentId, entries: marks },
+    { assessmentId, maxScore: assessmentMax, entries: marks },
     sessionT.header(),
   );
   report.check(

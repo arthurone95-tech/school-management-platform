@@ -5,6 +5,8 @@
 **Branch:** `main` (local only — nothing pushed, nothing deployed)\
 **Author:** automated session under a standing instruction to complete every remaining roadmap phase
 
+> **Historical snapshot (2026-10-18).** Status statements below reflect that date. For current status see `docs/PRODUCTION_READINESS.md`, `docs/DATABASE_DOCUMENTATION.md` and `docs/DECISIONS.md` (D-031, D-032). Update 2026-10-31: migrations `0009`/`0010` applied and recorded; Next.js upgraded to 16.4.3; live steps 02–14 and results step 15 (47/47) pass.
+
 **Contents:** A. Project status · B. Implementation summary · C. Independent
 decisions · D. Verification results · E. Database and migration status · F. Git
 and repository status · G. MY REQUIRED ACTIONS · H. Remaining work

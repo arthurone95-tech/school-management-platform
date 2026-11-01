@@ -3,6 +3,7 @@
 **Project:** School Management Platform\
 **Document status:** Readiness assessment, not an approval\
 **Assessed:** 2026-10-18\
+**Updated:** 2026-10-31 (migrations applied, framework upgraded, live suite re-run)\
 **Assessed by:** automated session (no owner involvement)
 
 ## 1. Purpose
@@ -28,9 +29,9 @@ provider, real data volume, or a legal opinion.
 | Authorization and tenant isolation | **Proven** | Live suite (RLS/isolation 15, cross-school denial in every staff suite) and 99 PGlite database checks |
 | Authentication and session handling | **Proven** | Live staff auth 44, portal 22, session refresh R-01 3/3, concurrent refresh R-02 4/4 |
 | Secret handling | **Proven** | Production bundle scanned for secret values (`tests/live/08-no-secrets-in-bundle.mjs`); secret values never printed or committed |
-| Build and quality gates | **Proven** | format, lint, type-check, build and 399 unit tests pass; the full live suite passes |
+| Build and quality gates | **Proven** | On Next.js 16.4.3: format, lint, type-check, build and 399 unit tests pass; live steps 02–14 and results step 15 (47/47) pass. Steps 06/07 were skipped because no Management API token was supplied |
 | Feature completeness (Phases 0–4) | **Complete** | Roadmap status paragraphs for each phase |
-| Data exchange (Phase 5 slice) | **Built, not live-verified** | Unit + PGlite tests pass; migration unapplied |
+| Data exchange (Phase 5 slice) | **Built, not live-verified** | Unit + PGlite tests pass; migrations applied 2026-10-31, but no live import/export suite exists |
 | Backups and restoration | **Not started** | Requires the production provider's plan |
 | Performance with real data volume | **Not measured** | Largest dataset is a seeded test school |
 | Monitoring and incident response | **Documented, untested** | No alerting configured |
@@ -80,20 +81,21 @@ state change, never by deletion:
 
 ## 4. What is not evidenced, and why
 
-### Pending migrations
+### Applied migrations (2026-10-31)
 
-Three migrations are written and locally verified but **not applied** to the dev
-project:
+The two outstanding migrations were applied to the dev project in order and
+recorded in `supabase_migrations.schema_migrations`:
 
 - `20261018000009_phase4_assessments.sql` (assessments, results, grade bands)
 - `20261018000010_phase5_data_exchange.sql` (import/export permissions and the
   export audit function)
 
-Consequence: the assessments and data-exchange features are verified by unit
-tests and PGlite, but **not end to end against a real database**. Their live
-suites exist and are registered; `tests/live/run-all.mjs` skips step 15 with an
-explicit message until the migration is applied. This is the single largest gap
-between "tested" and "verified in the intended environment".
+The schema is present (`grade_bands`, `assessments`, `assessment_results`), and
+the assessments/results slice is now verified live: `tests/live/15-results.mjs`
+passed 47/47 against the production build. The Phase 5 import/export endpoints
+still have **no live suite**, so they remain verified by unit and PGlite tests
+only. `tests/live/run-all.mjs` still skips step 15 when the Management API token
+is absent; it was run directly after steps 02–14.
 
 ### An unexplained migration in the dev project
 
@@ -143,8 +145,9 @@ largest consequence if it is wrong.
 
 In order:
 
-1. **Apply the pending migrations** to the development project and run the live
-   suite, including the new `15-results.mjs`. Exact commands in section 6.
+1. **Complete live verification of data exchange.** Migrations `0009`/`0010`
+   are applied and results step 15 passes 47/47, but the Phase 5 import/export
+   endpoints still need a live suite.
 2. **Resolve the unexplained migration** origin. If another process created it,
    find out what and whether it still runs.
 3. **Confirm the school-defined grading approach** (D-031) with a real school's
@@ -162,28 +165,30 @@ In order:
 
 ## 6. Outstanding operations
 
-### Apply the pending migrations (development project only)
+### Re-run live verification (development project only)
+
+The migrations are already applied. The linked Supabase CLI records them, so a
+repeat push is a no-op:
 
 ```sh
-$env:SUPABASE_MGMT_TOKEN = "<token>"
-$env:SUPABASE_MGMT_PROJECT_REF = "ysjumhlyqhoobywgqand"
-node tests/live/apply-migration.mjs supabase/migrations/20261018000009_phase4_assessments.sql
-node tests/live/apply-migration.mjs supabase/migrations/20261018000010_phase5_data_exchange.sql
+npx supabase@latest db push --linked --dry-run
 ```
 
-### Then verify live
+Build and start on a free port (3000 may belong to another project), then run
+the suite:
 
 ```sh
-npm run dev
-$env:SUPABASE_MGMT_TOKEN = "<token>"
-$env:SUPABASE_MGMT_PROJECT_REF = "ysjumhlyqhoobywgqand"
-$env:LIVE_APP_URL = "http://localhost:3000"
+npm run build
+npm run start -- -p 3100
+$env:LIVE_APP_URL = "http://localhost:3100"
 node tests/live/run-all.mjs
+node tests/live/15-results.mjs
 ```
 
-`run-all.mjs` will stop skipping step 15 once `20261018000009` is in
-`schema_migrations`. Expected: every step passes, including
-`[results] N/N checks passed`.
+`run-all.mjs` skips steps 06/07 and step 15 when the Management API token is not
+set. Running `15-results.mjs` directly after steps 02–14 exercises the results
+slice; it passed 47/47 on 2026-10-31. To include 06/07, also set
+`SUPABASE_MGMT_TOKEN` and `SUPABASE_MGMT_PROJECT_REF`.
 
 ## 7. What is deliberately not claimed
 

@@ -36,16 +36,18 @@ The repository contains documentation only. No application has been built.
 
 ## 3. Stack Validation
 
-### 3.1 Versions verified 2026-10-11
+### 3.1 Versions verified 2026-10-11 (framework updated 2026-10-31)
 
 | Component | Finding | Source |
 |---|---|---|
-| Next.js | **Installed: 16.4.0** (owner confirmed 2026-10-11, retained over 16.3.8). 16.3.8 was Active LTS (security release 2026-09-30); 15.5.27 is Maintenance LTS | local `package.json`; nextjs.org September 2026 security release |
+| Next.js | **Installed: 16.4.3** (upgraded from 16.4.0 on 2026-10-31 for the security advisories below). 16.3.8 was Active LTS (security release 2026-09-30); 15.5.27 is Maintenance LTS | local `package.json`; nextjs.org security advisories |
 | Node.js requirement | 20.9 or later | nextjs.org installation docs |
 | TypeScript requirement | 5.1 or later; local 5.9.3 | nextjs.org; local |
 | `@supabase/ssr` | v0.12.7 current; replaces deprecated `@supabase/auth-helpers-*` | supabase/ssr |
 | Local Node.js | v24.16.0 satisfies the requirement | local |
-| React | 19.3.0 installed; bundled with the Next.js 16.4.0 scaffold | local |
+| React | 19.3.0 installed; compatible with the Next.js 16.4.3 runtime | local |
+
+**Security update 2026-10-31.** Next.js 16.4.0 fell inside the affected range (`>=16.0.0 <=16.4.0`) for GHSA-2464-fhr4-w9xw (critical, Image Optimization/SVG RCE), GHSA-673q-mjm6-r5xr (critical, `use cache` typed-array RCE) and GHSA-p3m5-59mp-jv5r (high, Server Actions denial of service). Next.js 16.4.3 is outside that range; Next's own assessment returns `unaffected`. The project does not use `next/image`, Server Actions or `"use cache"`, but the framework was upgraded because the installed version was affected. `npm run build`, all quality gates and the live suite pass on 16.4.3.
 
 ### 3.2 Compatibility verdict
 
@@ -150,7 +152,7 @@ Severity follows `docs/ROADMAP_AND_TESTING.md` 8.
 
 | ID | Decision | Status | Blocks |
 |---|---|---|---|
-| D-011 | Application framework (Next.js + TypeScript) | **Confirmed** 2026-10-11 — installed 16.4.0 | — |
+| D-011 | Application framework (Next.js + TypeScript) | **Confirmed** 2026-10-11 — installed 16.4.3 (security update, 2026-10-31) | — |
 | D-020 | Student portal authentication approach | **Confirmed** 2026-10-11 (school code + username over an internal non-deliverable identifier) | Portal slice only; see R-08 |
 | — | First end-to-end workflow | **Confirmed** — D-018, enrolment | — |
 | — | Which school roles are required initially | **Resolved 2026-10-12** — D-021: Platform Owner, School Administrator, Teacher and Student; scope and school boundary per role in `docs/DECISIONS.md`. Parent/Guardian access deferred (E5 resolved) | Authorization may reference the four approved role labels; permission assignments remain feature-driven via the permission catalogue |

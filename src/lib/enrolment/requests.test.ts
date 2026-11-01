@@ -170,7 +170,7 @@ describe("parseLearnerStatusFilter", () => {
   it("defaults to the active view for a missing or unrecognised value", () => {
     expect(parseLearnerStatusFilter(null)).toBe("active");
     expect(parseLearnerStatusFilter("")).toBe("active");
-    expect(parseLearnerStatusFilter("all")).toBe("active");
+    expect(parseLearnerStatusFilter("all")).toBe("all");
     expect(parseLearnerStatusFilter("ACTIVE")).toBe("active");
   });
 

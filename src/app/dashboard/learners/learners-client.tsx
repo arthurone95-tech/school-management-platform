@@ -99,16 +99,20 @@ async function fetchClasses(): Promise<ClassesState> {
 
 async function fetchLearners(
   page: number,
-  status: LearnerStatus,
+  status: LearnerStatus | "all",
+  search?: string,
+  classId?: string,
 ): Promise<ListState> {
   let response: Response;
   try {
-    response = await fetch(
-      `/api/staff/learners?page=${page}&status=${status}`,
-      {
-        headers: { Accept: "application/json" },
-      },
-    );
+    const params = new URLSearchParams();
+    params.set("page", String(page));
+    params.set("status", status);
+    if (search && search.trim()) params.set("search", search.trim());
+    if (classId) params.set("classId", classId);
+    response = await fetch(`/api/staff/learners?${params.toString()}`, {
+      headers: { Accept: "application/json" },
+    });
   } catch {
     return { kind: "error", message: NETWORK_MESSAGE };
   }
@@ -202,8 +206,13 @@ export function LearnersClient({
   });
   const [listState, setListState] = useState<ListState>({ kind: "loading" });
   const [page, setPage] = useState(1);
-  const [statusFilter, setStatusFilter] = useState<LearnerStatus>("active");
   const [reloadKey, setReloadKey] = useState(0);
+  const [searchInput, setSearchInput] = useState("");
+  const [classFilter, setClassFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState<LearnerStatus | "all">("all");
+  const [appliedSearch, setAppliedSearch] = useState("");
+  const [appliedClass, setAppliedClass] = useState("");
+  const [appliedStatus, setAppliedStatus] = useState<LearnerStatus | "all">("all");
 
   const [form, setForm] = useState(EMPTY_FORM);
   const [formError, setFormError] = useState<string | null>(null);
@@ -249,7 +258,7 @@ export function LearnersClient({
     }
     let cancelled = false;
     void (async () => {
-      const next = await fetchLearners(page, statusFilter);
+      const next = await fetchLearners(page, appliedStatus, appliedSearch, appliedClass);
       if (!cancelled) {
         setListState(next);
       }
@@ -257,7 +266,7 @@ export function LearnersClient({
     return () => {
       cancelled = true;
     };
-  }, [canRead, page, statusFilter, reloadKey]);
+  }, [canRead, page, appliedStatus, reloadKey, appliedSearch, appliedClass]);
 
   function reloadList() {
     setListState({ kind: "loading" });
@@ -276,16 +285,7 @@ export function LearnersClient({
     setPage(next);
   }
 
-  function changeFilter(next: LearnerStatus) {
-    if (next === statusFilter) {
-      return;
-    }
-    closeEditor();
-    setRowNotice(null);
-    setListState({ kind: "loading" });
-    setPage(1);
-    setStatusFilter(parseLearnerStatusFilter(next));
-  }
+
 
   function update<K extends keyof typeof EMPTY_FORM>(
     key: K,
@@ -569,39 +569,6 @@ export function LearnersClient({
 
   return (
     <>
-      <header className="app-header">
-        <div className="app-header__inner">
-          <div className="brand">
-            <span className="brand__name">{schoolName ?? "Your school"}</span>
-            <span className="brand__context">
-              {roleLabel(role)}
-              {email ? ` · ${email}` : ""}
-            </span>
-          </div>
-          <div className="cluster cluster--end">
-            {canManageClasses ? (
-              <Link
-                className="btn btn--secondary btn--sm"
-                href="/dashboard/classes"
-              >
-                Classes
-              </Link>
-            ) : null}
-            <Link className="btn btn--secondary btn--sm" href="/dashboard">
-              Dashboard
-            </Link>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={handleSignOut}
-              loading={signingOut}
-            >
-              {signingOut ? "Signing out…" : "Sign out"}
-            </Button>
-          </div>
-        </div>
-      </header>
-
       <div className="container stack">
         <div className="stack stack--sm">
           <h1>Students</h1>
@@ -770,8 +737,8 @@ export function LearnersClient({
               title="Students"
               description={
                 listState.kind === "ready" && listState.total > 0
-                  ? `${listState.total} ${statusFilter} student${listState.total === 1 ? "" : "s"} in your school.`
-                  : statusFilter === "inactive"
+                  ? `${listState.total} ${appliedStatus === "all" ? "" : appliedStatus + " "}student${listState.total === 1 ? "" : "s"} in your school.`
+                  : appliedStatus === "inactive"
                     ? "No inactive students. Deactivated records stay here for lookup and reactivation."
                     : "The students registered in your school."
               }
@@ -786,24 +753,74 @@ export function LearnersClient({
                 </Button>
               }
             />
-            <CardBody className="cluster">
-              <span className="muted">Show:</span>
-              <Button
-                variant={statusFilter === "active" ? "primary" : "secondary"}
-                size="sm"
-                aria-pressed={statusFilter === "active"}
-                onClick={() => changeFilter("active")}
-              >
-                Active
-              </Button>
-              <Button
-                variant={statusFilter === "inactive" ? "primary" : "secondary"}
-                size="sm"
-                aria-pressed={statusFilter === "inactive"}
-                onClick={() => changeFilter("inactive")}
-              >
-                Inactive
-              </Button>
+            <CardBody className="stack stack--sm">
+              <div className="cluster" style={{ alignItems: "flex-end" }}>
+                <TextField
+                  label="Search students"
+                  name="student-search"
+                  type="search"
+                  placeholder="Name, username or registration number"
+                  value={searchInput}
+                  onChange={(event) => setSearchInput(event.target.value)}
+                />
+                <SelectField
+                  label="Status"
+                  name="status-filter"
+                  options={[
+                    { value: "all", label: "All" },
+                    { value: "active", label: "Active" },
+                    { value: "inactive", label: "Inactive" },
+                  ]}
+                  value={statusFilter}
+                  onChange={(event) =>
+                    setStatusFilter(event.target.value as LearnerStatus | "all")
+                  }
+                />
+                <SelectField
+                  label="Class"
+                  name="class-filter"
+                  options={[
+                    { value: "", label: "All classes" },
+                    ...(classesState.kind === "ready"
+                      ? classesState.classes.map((klass) => ({
+                          value: klass.id,
+                          label: klass.name,
+                        }))
+                      : []),
+                  ]}
+                  value={classFilter}
+                  onChange={(event) => setClassFilter(event.target.value)}
+                />
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => {
+                    setAppliedSearch(searchInput);
+                    setAppliedClass(classFilter);
+                    setAppliedStatus(statusFilter);
+                    setPage(1);
+                  }}
+                >
+                  Apply Filters
+                </Button>
+                {(appliedSearch || appliedClass || appliedStatus !== "all") ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setSearchInput("");
+                      setClassFilter("");
+                      setStatusFilter("all");
+                      setAppliedSearch("");
+                      setAppliedClass("");
+                      setAppliedStatus("all");
+                      setPage(1);
+                    }}
+                  >
+                    Clear
+                  </Button>
+                ) : null}
+              </div>
             </CardBody>
             {rowNotice ? (
               <CardBody>
