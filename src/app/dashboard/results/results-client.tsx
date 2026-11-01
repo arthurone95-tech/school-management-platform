@@ -167,11 +167,37 @@ export function ResultsClient({
       params.set("classId", nextClassId);
     }
     const query = params.toString();
-    const result = await getJson<{
-      classes: AttendanceClassOption[];
-      subjects: AttendanceSubjectOption[];
-    }>(`/api/staff/attendance/options${query ? `?${query}` : ""}`, "classes");
-    return result;
+    let response: Response;
+    try {
+      response = await fetch(
+        `/api/staff/attendance/options${query ? `?${query}` : ""}`,
+        { headers: { Accept: "application/json" } },
+      );
+    } catch {
+      return { ok: false as const, message: NETWORK_MESSAGE };
+    }
+    const payload = (await response.json().catch(() => ({}))) as {
+      readonly ok?: boolean;
+      readonly error?: string;
+      readonly classes?: AttendanceClassOption[];
+      readonly subjects?: AttendanceSubjectOption[];
+    };
+    if (!response.ok || payload.ok !== true) {
+      return {
+        ok: false as const,
+        message:
+          typeof payload.error === "string"
+            ? payload.error
+            : "The data could not be loaded.",
+      };
+    }
+    return {
+      ok: true as const,
+      value: {
+        classes: payload.classes ?? [],
+        subjects: payload.subjects ?? [],
+      },
+    };
   }, []);
 
   const fetchAssessments = useCallback(
@@ -452,7 +478,7 @@ export function ResultsClient({
                 onChange={(event) => selectClass(event.target.value)}
                 options={[
                   { value: "", label: "Choose a class" },
-                  ...classes
+                  ...(classes ?? [])
                     .filter((klass) => klass.isActive)
                     .map((klass) => ({ value: klass.id, label: klass.name })),
                 ]}
