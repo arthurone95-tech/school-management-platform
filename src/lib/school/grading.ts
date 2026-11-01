@@ -8,6 +8,23 @@ export type Proficiency =
   | "Approaching Proficient"
   | "Emerging";
 
+/**
+ * GES 9-point grading scale (A1..F9) from a percentage.
+ */
+export type GesGrade = "A1" | "B2" | "B3" | "C4" | "C5" | "C6" | "D7" | "E8" | "F9";
+
+export function gesGradeForPercentage(percentage: number): GesGrade {
+  if (percentage >= 80) return "A1";
+  if (percentage >= 75) return "B2";
+  if (percentage >= 70) return "B3";
+  if (percentage >= 65) return "C4";
+  if (percentage >= 60) return "C5";
+  if (percentage >= 55) return "C6";
+  if (percentage >= 50) return "D7";
+  if (percentage >= 40) return "E8";
+  return "F9";
+}
+
 export function proficiencyForPercentage(percentage: number): Proficiency {
   if (percentage >= 80) return "High Proficiency";
   if (percentage >= 70) return "Proficient";

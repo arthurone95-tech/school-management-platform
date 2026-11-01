@@ -151,6 +151,7 @@ export function SchoolClient({
   const [subjectError, setSubjectError] = useState<string | null>(null);
   const [subjectNotice, setSubjectNotice] = useState<string | null>(null);
   const [subjectKey, setSubjectKey] = useState(0);
+  const [assessmentMode, setAssessmentMode] = useState<"ges_standard" | "custom" | null>(null);
   const [subjectName, setSubjectName] = useState("");
   const [subjectCode, setSubjectCode] = useState("");
   const [creatingSubject, setCreatingSubject] = useState(false);
@@ -194,6 +195,29 @@ export function SchoolClient({
       cancelled = true;
     };
   }, [canManageSchool]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/staff/school/assessment-mode", {
+          headers: { Accept: "application/json" },
+        });
+        const payload = (await res.json().catch(() => ({}))) as {
+          ok?: boolean;
+          mode?: "ges_standard" | "custom";
+        };
+        if (!cancelled && payload.ok && payload.mode) {
+          setAssessmentMode(payload.mode);
+        }
+      } catch {
+        // leave mode unset
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!canReadAcademic) {
@@ -613,7 +637,7 @@ export function SchoolClient({
           </p>
         </div>
 
-        <AssessmentModeToggle />
+        <AssessmentModeToggle onModeChange={setAssessmentMode} />
 
         {/* School profile */}
         {canManageSchool ? (
@@ -1015,8 +1039,8 @@ export function SchoolClient({
           </Card>
         ) : null}
 
-        {/* Subjects */}
-        {canReadSubjects ? (
+        {/* Subjects (custom mode only) */}
+        {canReadSubjects && assessmentMode !== "ges_standard" ? (
           <Card>
             <CardHeader
               title="Subjects"
@@ -1173,8 +1197,8 @@ export function SchoolClient({
           </Card>
         ) : null}
 
-        {/* Grading bands */}
-        {canReadGrading ? (
+        {/* Grading bands (custom mode only) */}
+        {canReadGrading && assessmentMode !== "ges_standard" ? (
           <Card>
             <CardHeader
               title="Grading bands"

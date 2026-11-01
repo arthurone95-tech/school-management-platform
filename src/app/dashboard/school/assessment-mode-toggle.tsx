@@ -8,7 +8,11 @@ import { Card, CardBody, CardHeader } from "@/components/ui/card";
 
 type Mode = "ges_standard" | "custom";
 
-export function AssessmentModeToggle() {
+export function AssessmentModeToggle({
+  onModeChange,
+}: {
+  readonly onModeChange?: (mode: Mode) => void;
+}) {
   const [mode, setMode] = useState<Mode | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -29,6 +33,7 @@ export function AssessmentModeToggle() {
         if (!cancelled) {
           if (payload.ok && (payload.mode === "ges_standard" || payload.mode === "custom")) {
             setMode(payload.mode);
+            onModeChange?.(payload.mode);
           } else {
             setError(payload.error ?? "The assessment mode could not be loaded.");
           }
@@ -62,6 +67,7 @@ export function AssessmentModeToggle() {
       };
       if (res.ok && payload.ok && payload.mode) {
         setMode(payload.mode);
+        onModeChange?.(payload.mode);
       } else {
         setError(payload.error ?? "The assessment mode could not be saved.");
       }
