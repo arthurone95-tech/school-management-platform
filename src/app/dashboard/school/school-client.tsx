@@ -25,6 +25,7 @@ import type {
 import { parseGradeBandCreateInput } from "@/lib/academics/requests";
 import type { GradeBandSummary } from "@/lib/academics/types";
 import { roleLabel } from "@/lib/staff/roles";
+import { AssessmentModeToggle } from "./assessment-mode-toggle";
 
 const NETWORK_MESSAGE =
   "We could not reach the server. Check your connection and try again.";
@@ -611,6 +612,8 @@ export function SchoolClient({
             teaches. These belong only to your school.
           </p>
         </div>
+
+        <AssessmentModeToggle />
 
         {/* School profile */}
         {canManageSchool ? (
