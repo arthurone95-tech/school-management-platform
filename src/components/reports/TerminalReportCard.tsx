@@ -10,6 +10,7 @@ export interface TerminalSubject {
   readonly position?: number | string | null;
   readonly remarks?: string | null;
   readonly grade?: string | null;
+  readonly rubric?: "VG" | "G" | "NH" | null;
 }
 
 export interface TerminalBills {
@@ -40,6 +41,7 @@ export interface TerminalReportCardProps {
   readonly headTeacherRemarks?: string | null;
   readonly promotedTo?: string | null;
   readonly bills?: TerminalBills | null;
+  readonly earlyYears?: boolean;
 }
 
 function ordinalSuffix(n: number): string {
@@ -81,6 +83,7 @@ export function TerminalReportCard(props: TerminalReportCardProps) {
     headTeacherRemarks,
     promotedTo,
     bills,
+    earlyYears,
   } = props;
 
   const numericSubjects = subjects.filter(
@@ -217,7 +220,35 @@ export function TerminalReportCard(props: TerminalReportCardProps) {
           </tbody>
         </table>
 
-        {subjects.length > 0 ? (
+        {subjects.length === 0 ? (
+          <p style={{ margin: "6px 0" }}>No subject data available.</p>
+        ) : earlyYears ? (
+          <table className="subjects-table" style={{ width: "100%", borderCollapse: "collapse", margin: "10px 0", fontSize: "8pt" }}>
+            <thead>
+              <tr>
+                <th style={{ border: "1px solid #000", padding: "4px 6px", background: "#f5f5f5" }}>SUBJECTS</th>
+                <th style={{ border: "1px solid #000", padding: "4px 6px", background: "#f5f5f5" }}>VG</th>
+                <th style={{ border: "1px solid #000", padding: "4px 6px", background: "#f5f5f5" }}>G</th>
+                <th style={{ border: "1px solid #000", padding: "4px 6px", background: "#f5f5f5" }}>NH</th>
+                <th style={{ border: "1px solid #000", padding: "4px 6px", background: "#f5f5f5" }}>REMARKS</th>
+              </tr>
+            </thead>
+            <tbody>
+              {subjects.map((subject) => {
+                const rating = subject.rubric ?? subject.grade;
+                return (
+                  <tr key={subject.name}>
+                    <td>{subject.name}</td>
+                    <td className="text-center">{rating === "VG" ? "✓" : ""}</td>
+                    <td className="text-center">{rating === "G" ? "✓" : ""}</td>
+                    <td className="text-center">{rating === "NH" ? "✓" : ""}</td>
+                    <td>{subject.remarks ?? "-"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        ) : (
           <table className="subjects-table" style={{ width: "100%", borderCollapse: "collapse", margin: "10px 0", fontSize: "8pt" }}>
             <thead>
               <tr>
@@ -231,8 +262,6 @@ export function TerminalReportCard(props: TerminalReportCardProps) {
             </thead>
             <tbody>{subjectRows}</tbody>
           </table>
-        ) : (
-          <p style={{ margin: "6px 0" }}>No subject data available.</p>
         )}
 
         <div className="conduct-section" style={{ margin: "10px 0" }}>

@@ -20,6 +20,11 @@ import {
   GES_EXAM_SCORE_MAX,
   formatGesPosition,
 } from "@/lib/school/ges-calculator";
+import {
+  getSubjectsForClass,
+  isHeading,
+} from "@/lib/school/subjects";
+import type { GesRubric } from "@/lib/academics/ges-types";
 
 const NETWORK_MESSAGE =
   "We could not reach the server. Check your connection and try again.";
@@ -155,6 +160,7 @@ export function GesResults({
   const [selectedLearnerId, setSelectedLearnerId] = useState("");
   const [reportLearnerId, setReportLearnerId] = useState("");
   const [draft, setDraft] = useState<ScoreDraft>({});
+  const [rubricDraft, setRubricDraft] = useState<Record<string, GesRubric | null>>({});
   const [draftError, setDraftError] = useState<string | null>(null);
 
   const initialisedTerm = useRef(false);
@@ -218,6 +224,7 @@ export function GesResults({
     setReportLearnerId("");
     setSheet(null);
     setDraft({});
+    setRubricDraft({});
     setDraftError(null);
     setNotice(null);
     setLoading(true);
@@ -229,6 +236,7 @@ export function GesResults({
     setReportLearnerId("");
     setSheet(null);
     setDraft({});
+    setRubricDraft({});
     setDraftError(null);
     setNotice(null);
     setLoading(true);
@@ -254,6 +262,13 @@ export function GesResults({
       sheet?.learners.find((entry) => entry.learnerId === learnerId) ?? null;
     setSelectedLearnerId(learnerId);
     setDraft(learner ? draftFor(learner) : {});
+    const nextRubric: Record<string, GesRubric | null> = {};
+    if (learner) {
+      for (const subject of learner.subjects) {
+        nextRubric[subject.subjectName] = subject.rubric;
+      }
+    }
+    setRubricDraft(nextRubric);
     setReportLearnerId("");
     setDraftError(null);
     setNotice(null);
@@ -323,7 +338,51 @@ export function GesResults({
         (entry) => entry.learnerId === selectedLearner.learnerId,
       ) ?? null;
     setDraft(updated ? draftFor(updated) : {});
+    setRubricDraft({});
     setNotice(`Saved ${selectedLearner.fullName}'s subject scores.`);
+  }
+
+  async function saveEarlyYearsLearner() {
+    if (!sheet || !selectedLearner) {
+      return;
+    }
+
+    setSaving(true);
+    setDraftError(null);
+    setError(null);
+    setNotice(null);
+
+    const result = await saveScores({
+      classId: sheet.classId,
+      termId: sheet.termId,
+      learnerId: selectedLearner.learnerId,
+      scores: sheet.subjects.map((subjectName) => ({
+        subjectName,
+        classScore: null,
+        examScore: null,
+        rubric: rubricDraft[subjectName] ?? null,
+      })),
+    });
+    setSaving(false);
+
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+
+    setSheet(result.sheet);
+    const updated =
+      result.sheet.learners.find(
+        (entry) => entry.learnerId === selectedLearner.learnerId,
+      ) ?? null;
+    const nextRubric: Record<string, GesRubric | null> = {};
+    if (updated) {
+      for (const subject of updated.subjects) {
+        nextRubric[subject.subjectName] = subject.rubric;
+      }
+    }
+    setRubricDraft(nextRubric);
+    setNotice(`Saved ${selectedLearner.fullName}'s qualitative ratings.`);
   }
 
   const activeClasses = classes.filter((klass) => klass.isActive);
@@ -336,6 +395,7 @@ export function GesResults({
         position: subject.position,
         remarks: subject.proficiency,
         grade: subject.grade,
+        rubric: subject.rubric,
       }))
     : [];
 
@@ -507,7 +567,7 @@ export function GesResults({
             </ul>
           </Card>
 
-          {selectedLearner ? (
+          {selectedLearner && !sheet?.earlyYears ? (
             <Card>
               <CardHeader
                 title={`Subject scores — ${selectedLearner.fullName}`}
@@ -641,6 +701,90 @@ export function GesResults({
             </Card>
           ) : null}
 
+          {selectedLearner && sheet?.earlyYears ? (
+            <Card>
+              <CardHeader
+                title={`Qualitative ratings - ${selectedLearner.fullName}`}
+                description={`${selectedLearner.registrationNumber}. Use VG (Very Good), G (Good), or NH (Needs Help) for each learning area.`}
+                actions={
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setSelectedLearnerId("");
+                      setRubricDraft({});
+                      setDraftError(null);
+                    }}
+                  >
+                    Close
+                  </Button>
+                }
+              />
+              <CardBody>
+                {draftError ? <Alert variant="error">{draftError}</Alert> : null}
+                <div className="ges-rubric-list">
+                  {getSubjectsForClass(sheet.className).map((entry, index) => {
+                    if (isHeading(entry)) {
+                      return (
+                        <div key={`heading-${entry.name}-${index}`} className="ges-rubric-heading">
+                          {entry.name}
+                        </div>
+                      );
+                    }
+                    const value = rubricDraft[entry.name] ?? null;
+                    return (
+                      <div key={entry.name} className="ges-rubric-row">
+                        <span className="ges-rubric-subject">{entry.name}</span>
+                        <div className="ges-rubric-options">
+                          {(["VG", "G", "NH"] as const).map((option) => (
+                            <label key={option} className="ges-rubric-option">
+                              <input
+                                type="radio"
+                                name={`rubric-${entry.name}`}
+                                value={option}
+                                checked={value === option}
+                                onChange={() =>
+                                  setRubricDraft((current) => ({
+                                    ...current,
+                                    [entry.name]: option,
+                                  }))
+                                }
+                                disabled={!sheet.isEditable || saving}
+                              />
+                              <span>{option}</span>
+                            </label>
+                          ))}
+                          <button
+                            type="button"
+                            className="btn btn--ghost btn--sm"
+                            onClick={() =>
+                              setRubricDraft((current) => ({
+                                ...current,
+                                [entry.name]: null,
+                              }))
+                            }
+                            disabled={!sheet.isEditable || saving}
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="cluster" style={{ marginTop: "0.75rem" }}>
+                  <Button
+                    onClick={() => void saveEarlyYearsLearner()}
+                    loading={saving}
+                    disabled={!sheet.isEditable}
+                  >
+                    Save qualitative ratings
+                  </Button>
+                </div>
+              </CardBody>
+            </Card>
+          ) : null}
+
           {reportLearner ? (
             <Card>
               <CardHeader
@@ -677,6 +821,7 @@ export function GesResults({
                   createdAt={new Date().toISOString()}
                   subjects={reportSubjects}
                   bills={{}}
+                  earlyYears={sheet.earlyYears}
                 />
               </CardBody>
             </Card>

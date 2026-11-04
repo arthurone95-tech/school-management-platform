@@ -1111,3 +1111,51 @@ body.sidebar-collapsed .app-main {
     overflow: visible;
   }
 }
+
+/* ---------- GES early-years qualitative rubrics ---------- */
+
+.ges-rubric-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.ges-rubric-heading {
+  margin-top: 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.25rem;
+}
+
+.ges-rubric-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.ges-rubric-subject {
+  flex: 1 1 12rem;
+  font-weight: 600;
+}
+
+.ges-rubric-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ges-rubric-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.875rem;
+}

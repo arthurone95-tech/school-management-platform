@@ -232,6 +232,56 @@ export async function getGesSheet(input: {
   const earlyYears = isEarlyYearsClass(klass.name);
 
   if (earlyYears) {
+    const { data: assessmentData, error: assessmentError } = await supabase
+      .from("assessments")
+      .select(
+        "id, name, assessment_results ( learner_id, remark )",
+      )
+      .eq("school_id", schoolId)
+      .eq("class_id", classId)
+      .eq("framework", "ges_standard")
+      .eq("term_id", term.id)
+      .eq("is_active", true);
+
+    if (assessmentError) {
+      return {
+        ok: false,
+        reason: "other",
+        message: "The GES score sheet could not be loaded.",
+      };
+    }
+
+    const assessmentBySubject = new Map<
+      string,
+      {
+        readonly id: string;
+        readonly results: Map<string, "VG" | "G" | "NH" | null>;
+      }
+    >();
+
+    for (const assessment of (assessmentData ?? []) as Array<{
+      id: string;
+      name: string;
+      assessment_results:
+        | { learner_id: string; remark: string | null }[]
+        | null;
+    }>) {
+      const results = new Map<string, "VG" | "G" | "NH" | null>();
+      for (const result of assessment.assessment_results ?? []) {
+        const rubric =
+          result.remark === "VG" ||
+          result.remark === "G" ||
+          result.remark === "NH"
+            ? result.remark
+            : null;
+        results.set(result.learner_id, rubric);
+      }
+      assessmentBySubject.set(subjectKey(assessment.name), {
+        id: assessment.id,
+        results,
+      });
+    }
+
     return {
       ok: true,
       sheet: {
@@ -247,14 +297,28 @@ export async function getGesSheet(input: {
           learnerId: learner.learner_id,
           registrationNumber: learner.registration_number,
           fullName: learner.full_name,
-          subjects: [],
+          subjects: subjectNames.map((name) => {
+            const assessment = assessmentBySubject.get(subjectKey(name));
+            const rubric = assessment?.results.get(learner.learner_id) ?? null;
+            return {
+              subjectName: name,
+              assessmentId: assessment?.id ?? null,
+              classScore: null,
+              examScore: null,
+              totalScore: null,
+              grade: null,
+              proficiency: null,
+              rubric,
+              position: null,
+            };
+          }),
           totalScore: null,
           averageScore: null,
           markedSubjects: 0,
           isComplete: false,
           position: null,
         })),
-        isEditable: false,
+        isEditable: input.mayRecord,
       },
     };
   }
@@ -323,6 +387,7 @@ export async function getGesSheet(input: {
         totalScore: calculated.totalScore,
         grade: calculated.grade,
         proficiency: calculated.proficiency,
+        rubric: null,
         position: null,
       };
     });
@@ -443,14 +508,7 @@ export async function submitGesScores(input: {
       message: failureMessage("not_found", "Term"),
     };
   }
-  if (isEarlyYearsClass(klass.name)) {
-    return {
-      ok: false,
-      reason: "invalid",
-      message:
-        "Early-years classes use developmental rubrics, not the Basic/JHS 50 + 50 score sheet.",
-    };
-  }
+  const earlyYears = isEarlyYearsClass(klass.name);
 
   const official = getAssessableSubjectsForClass(klass.name);
   const officialByKey = new Map(
@@ -493,6 +551,225 @@ export async function submitGesScores(input: {
       message:
         "That learner is not currently in this class. Reload the sheet and try again.",
     };
+  }
+
+  if (earlyYears) {
+    const official = getAssessableSubjectsForClass(klass.name);
+    const officialByKey = new Map(
+      official.map((name) => [subjectKey(name), name] as const),
+    );
+
+    const canonicalScores: Array<GesScoreSubmitInput["scores"][number] & {
+      subjectName: string;
+    }> = [];
+    for (const score of submit.scores) {
+      const canonical = officialByKey.get(subjectKey(score.subjectName));
+      if (!canonical) {
+        return {
+          ok: false,
+          reason: "invalid",
+          message:
+            "One or more subjects are not part of the official GES list for this class.",
+        };
+      }
+      canonicalScores.push({ ...score, subjectName: canonical });
+    }
+
+    for (const score of submit.scores) {
+      if (
+        score.rubric !== null &&
+        score.rubric !== "VG" &&
+        score.rubric !== "G" &&
+        score.rubric !== "NH"
+      ) {
+        return {
+          ok: false,
+          reason: "invalid",
+          message: "Invalid qualitative rating.",
+        };
+      }
+    }
+
+    const subjectNames = canonicalScores.map((score) => score.subjectName);
+
+    const { data: existingData, error: existingError } = await supabase
+      .from("assessments")
+      .select("id, name")
+      .eq("school_id", schoolId)
+      .eq("class_id", submit.classId)
+      .eq("framework", "ges_standard")
+      .eq("term_id", term.id)
+      .eq("is_active", true)
+      .in("name", subjectNames);
+
+    if (existingError) {
+      return {
+        ok: false,
+        reason: classify(existingError),
+        message: "The GES subject assessments could not be loaded.",
+      };
+    }
+
+    const assessmentByName = new Map<string, { id: string; name: string }>();
+    for (const row of (existingData ?? []) as { id: string; name: string }[]) {
+      assessmentByName.set(subjectKey(row.name), row);
+    }
+
+    const missing = subjectNames.filter((name) => {
+      if (assessmentByName.has(subjectKey(name))) {
+        return false;
+      }
+      const score = canonicalScores.find(
+        (entry) => entry.subjectName === name,
+      );
+      return score?.rubric !== null && score?.rubric !== undefined;
+    });
+
+    if (missing.length > 0) {
+      const { data: inserted, error: insertError } = await supabase
+        .from("assessments")
+        .insert(
+          missing.map((name) => ({
+            school_id: schoolId,
+            class_id: submit.classId,
+            subject_id: null,
+            academic_year_id: term.academicYearId,
+            term_id: term.id,
+            name,
+            max_score: 100,
+            assessed_on: today,
+            notes: "GES early-years qualitative rubric",
+            framework: "ges_standard",
+            created_by: userId,
+          })),
+        )
+        .select("id, name");
+
+      if (insertError) {
+        if (isPolicyRefusal(insertError)) {
+          return {
+            ok: false,
+            reason: "not_found",
+            message:
+              "You do not have permission to create the GES subject assessments.",
+          };
+        }
+        const reason = classify(insertError);
+        return {
+          ok: false,
+          reason,
+          message: failureMessage(reason, "GES subject assessment"),
+        };
+      }
+
+      for (const row of (inserted ?? []) as { id: string; name: string }[]) {
+        assessmentByName.set(subjectKey(row.name), row);
+      }
+    }
+
+    const assessmentIds = canonicalScores
+      .map((score) => assessmentByName.get(subjectKey(score.subjectName))?.id)
+      .filter((id): id is string => typeof id === "string");
+
+    const existingResults = new Set<string>();
+    if (assessmentIds.length > 0) {
+      const { data: resultData, error: resultError } = await supabase
+        .from("assessment_results")
+        .select("assessment_id")
+        .eq("school_id", schoolId)
+        .eq("learner_id", submit.learnerId)
+        .in("assessment_id", assessmentIds);
+
+      if (resultError) {
+        return {
+          ok: false,
+          reason: classify(resultError),
+          message: "The GES scores could not be saved.",
+        };
+      }
+      for (const row of (resultData ?? []) as { assessment_id: string }[]) {
+        existingResults.add(row.assessment_id);
+      }
+    }
+
+    for (const score of canonicalScores) {
+      const assessment = assessmentByName.get(subjectKey(score.subjectName));
+      if (!assessment) {
+        if (score.rubric === null) {
+          continue;
+        }
+        return {
+          ok: false,
+          reason: "other",
+          message: "The GES scores could not be saved.",
+        };
+      }
+
+      if (score.rubric === null && !existingResults.has(assessment.id)) {
+        continue;
+      }
+
+      const patch = {
+        class_score: null,
+        exam_score: null,
+        remark: score.rubric,
+        graded_by: userId,
+        graded_at: new Date().toISOString(),
+      };
+
+      const result =
+        existingResults.has(assessment.id)
+          ? await supabase
+              .from("assessment_results")
+              .update(patch)
+              .eq("school_id", schoolId)
+              .eq("assessment_id", assessment.id)
+              .eq("learner_id", submit.learnerId)
+          : await supabase.from("assessment_results").insert({
+              school_id: schoolId,
+              assessment_id: assessment.id,
+              learner_id: submit.learnerId,
+              ...patch,
+            });
+
+      if (result.error) {
+        if (isPolicyRefusal(result.error)) {
+          return {
+            ok: false,
+            reason: "not_found",
+            message: failureMessage("not_found", "GES assessment"),
+          };
+        }
+        const reason = classify(result.error);
+        return {
+          ok: false,
+          reason,
+          message: failureMessage(reason, "GES score"),
+        };
+      }
+    }
+
+    try {
+      return await getGesSheet({
+        supabase,
+        schoolId,
+        classId: submit.classId,
+        termId: term.id,
+        mayRecord: input.mayRecord,
+        today,
+        options,
+      });
+    } catch (error) {
+      if (!(error instanceof UnknownGesSubjectError)) {
+        throw error;
+      }
+      return {
+        ok: false,
+        reason: "invalid",
+        message:
+          "One or more subjects are not part of the official GES list for this class.",
+      };
+    }
   }
 
   try {

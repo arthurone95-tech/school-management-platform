@@ -97,7 +97,16 @@ export async function GET(request: Request): Promise<NextResponse> {
     });
   }
 
+  const { data: membership } = await supabase
+    .from("school_members")
+    .select("role")
+    .eq("user_id", access.userId)
+    .eq("status", "active")
+    .maybeSingle<{ role: string }>();
+  const isAdmin = membership?.role === "school_administrator";
+
   const canRecord =
+    !isAdmin &&
     (await hasPermission(supabase, access.schoolId, "result.record")) &&
     (await hasPermission(supabase, access.schoolId, "assessment.manage"));
 
@@ -131,6 +140,23 @@ export async function POST(request: Request): Promise<NextResponse> {
   const access = await resolveSchoolAccess(supabase, "result.record");
   if (!access.ok) {
     return json({ ok: false, error: access.message }, access.status);
+  }
+
+  const { data: postMembership } = await supabase
+    .from("school_members")
+    .select("role")
+    .eq("user_id", access.userId)
+    .eq("status", "active")
+    .maybeSingle<{ role: string }>();
+  if (postMembership?.role === "school_administrator") {
+    return json(
+      {
+        ok: false,
+        error:
+          "Score entry is reserved for class teachers. Administrators review results read-only.",
+      },
+      403,
+    );
   }
 
   if (

@@ -21,6 +21,20 @@ export type Proficiency =
   | "Approaching Proficient"
   | "Emerging";
 
+/** Qualitative rating used by Crèche, Nursery and Kindergarten. */
+export type GesRubric = "VG" | "G" | "NH";
+
+export function gesRubricLabel(rubric: GesRubric): string {
+  switch (rubric) {
+    case "VG":
+      return "Very Good";
+    case "G":
+      return "Good";
+    case "NH":
+      return "Needs Help";
+  }
+}
+
 /** GES nine-point grading scale (A1..F9). */
 export type GesGrade =
   | "A1"

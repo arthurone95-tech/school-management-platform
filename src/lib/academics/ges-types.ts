@@ -6,7 +6,8 @@
  * calculation fields are derived with `src/lib/school/ges-calculator.ts`.
  */
 
-import type { GesGrade, Proficiency } from "@/lib/school/ges-calculator";
+import type { GesGrade, GesRubric, Proficiency } from "@/lib/school/ges-calculator";
+export type { GesRubric };
 
 export interface GesClassOption {
   readonly id: string;
@@ -33,6 +34,8 @@ export interface GesSubjectScore {
   readonly totalScore: number | null;
   readonly grade: GesGrade | null;
   readonly proficiency: Proficiency | null;
+  /** Qualitative rating for early-years classes; null for numeric subjects. */
+  readonly rubric: GesRubric | null;
   /** Competition rank across the class, highest total first. */
   readonly position: number | null;
 }

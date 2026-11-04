@@ -31,6 +31,7 @@ export interface GesSubjectScoreInput {
   readonly subjectName: string;
   readonly classScore: number | null;
   readonly examScore: number | null;
+  readonly rubric: "VG" | "G" | "NH" | null;
 }
 
 export interface GesScoreSubmitInput {
@@ -166,10 +167,25 @@ export function parseGesScoreSubmitInput(
       return { ok: false, message: validated.message };
     }
 
+    let rubric: "VG" | "G" | "NH" | null = null;
+    if (has(raw, "rubric")) {
+      const rawRubric = raw["rubric"];
+      if (
+        rawRubric !== null &&
+        rawRubric !== "VG" &&
+        rawRubric !== "G" &&
+        rawRubric !== "NH"
+      ) {
+        return { ok: false, message: "Invalid qualitative rating." };
+      }
+      rubric = rawRubric as "VG" | "G" | "NH" | null;
+    }
+
     scores.push({
       subjectName,
       classScore: validated.classScore,
       examScore: validated.examScore,
+      rubric,
     });
   }
 
