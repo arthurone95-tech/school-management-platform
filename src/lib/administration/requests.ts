@@ -80,7 +80,15 @@ function idField(
 
 export function parseSchoolProfileUpdateInput(
   body: unknown,
-): ParseResult<{ name: string }> {
+): ParseResult<{
+  name: string;
+  physicalAddress: string | null;
+  primaryPhone: string | null;
+  secondaryPhone: string | null;
+  officialEmail: string | null;
+  website: string | null;
+  logoUrl: string | null;
+}> {
   if (!isRecord(body)) {
     return { ok: false, message: "Enter the school name." };
   }
@@ -94,7 +102,35 @@ export function parseSchoolProfileUpdateInput(
     };
   }
 
-  return { ok: true, value: { name } };
+  function optionalText(key: string, max: number): string | null {
+    const rawValue = readString(body as Record<string, unknown>, key);
+    if (rawValue === null) {
+      return null;
+    }
+    const cleaned = cleanLabel(rawValue, max);
+    if (cleaned === null) {
+      return null;
+    }
+    return cleaned.length === 0 ? null : cleaned;
+  }
+
+  const officialEmail = optionalText("officialEmail", 120);
+  if (officialEmail !== null && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(officialEmail)) {
+    return { ok: false, message: "Enter a valid official email address." };
+  }
+
+  return {
+    ok: true,
+    value: {
+      name,
+      physicalAddress: optionalText("physicalAddress", 240),
+      primaryPhone: optionalText("primaryPhone", 40),
+      secondaryPhone: optionalText("secondaryPhone", 40),
+      officialEmail,
+      website: optionalText("website", 120),
+      logoUrl: optionalText("logoUrl", 500),
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------

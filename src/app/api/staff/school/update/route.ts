@@ -48,6 +48,12 @@ export async function POST(request: Request): Promise<NextResponse> {
     supabase,
     schoolId: access.schoolId,
     name: parsed.value.name,
+    physicalAddress: parsed.value.physicalAddress,
+    primaryPhone: parsed.value.primaryPhone,
+    secondaryPhone: parsed.value.secondaryPhone,
+    officialEmail: parsed.value.officialEmail,
+    website: parsed.value.website,
+    logoUrl: parsed.value.logoUrl,
   });
 
   if (!result.ok) {

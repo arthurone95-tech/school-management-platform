@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
@@ -7,6 +7,7 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { TextField } from "@/components/ui/form";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
   parseAcademicYearCreateInput,
   parseAcademicYearUpdateInput,
@@ -95,6 +96,13 @@ export function SchoolClient({
   const [profile, setProfile] = useState<SchoolProfile | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [nameDraft, setNameDraft] = useState("");
+  const [physicalAddressDraft, setPhysicalAddressDraft] = useState("");
+  const [primaryPhoneDraft, setPrimaryPhoneDraft] = useState("");
+  const [secondaryPhoneDraft, setSecondaryPhoneDraft] = useState("");
+  const [officialEmailDraft, setOfficialEmailDraft] = useState("");
+  const [websiteDraft, setWebsiteDraft] = useState("");
+  const [logoUrlDraft, setLogoUrlDraft] = useState<string | null>(null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileNotice, setProfileNotice] = useState<string | null>(null);
 
@@ -140,6 +148,12 @@ export function SchoolClient({
       if (result.ok) {
         setProfile(result.value);
         setNameDraft(result.value.name);
+        setPhysicalAddressDraft(result.value.physicalAddress ?? "");
+        setPrimaryPhoneDraft(result.value.primaryPhone ?? "");
+        setSecondaryPhoneDraft(result.value.secondaryPhone ?? "");
+        setOfficialEmailDraft(result.value.officialEmail ?? "");
+        setWebsiteDraft(result.value.website ?? "");
+        setLogoUrlDraft(result.value.logoUrl);
       } else {
         setProfileError(result.message);
       }
@@ -186,7 +200,15 @@ export function SchoolClient({
     setProfileError(null);
     setProfileNotice(null);
 
-    const parsed = parseSchoolProfileUpdateInput({ name: nameDraft });
+    const parsed = parseSchoolProfileUpdateInput({
+      name: nameDraft,
+      physicalAddress: physicalAddressDraft,
+      primaryPhone: primaryPhoneDraft,
+      secondaryPhone: secondaryPhoneDraft,
+      officialEmail: officialEmailDraft,
+      website: websiteDraft,
+      logoUrl: logoUrlDraft,
+    });
     if (!parsed.ok) {
       setProfileError(parsed.message);
       return;
@@ -199,8 +221,46 @@ export function SchoolClient({
       setProfileError(result.message);
       return;
     }
-    setProfileNotice("School name saved.");
+    setProfileNotice("School profile saved.");
     router.refresh();
+  }
+
+  async function handleLogoChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file || !profile) {
+      return;
+    }
+    if (!file.type.startsWith("image/")) {
+      setProfileError("Choose an image file (PNG, JPEG, or WebP).");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setProfileError("The logo must be 2 MB or smaller.");
+      return;
+    }
+
+    setUploadingLogo(true);
+    setProfileError(null);
+    setProfileNotice(null);
+
+    const supabase = createSupabaseBrowserClient();
+    const extension = file.name.split(".").pop()?.toLowerCase() || "png";
+    const path = `${profile.id}/logo/${Date.now()}.${extension}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("school-assets")
+      .upload(path, file, { upsert: true });
+
+    if (uploadError) {
+      setUploadingLogo(false);
+      setProfileError(uploadError.message);
+      return;
+    }
+
+    const { data } = supabase.storage.from("school-assets").getPublicUrl(path);
+    setLogoUrlDraft(data.publicUrl);
+    setUploadingLogo(false);
+    setProfileNotice("Logo uploaded. Save the profile to keep it.");
   }
 
   async function handleCreateYear(event: FormEvent<HTMLFormElement>) {
@@ -371,14 +431,57 @@ export function SchoolClient({
               ) : null}
               {profile === null && profileError === null ? (
                 <p className="muted" role="status">
-                  Loading school profile…
+                  Loading school profileâ€¦
                 </p>
               ) : (
                 <form
-                  className="inline-form"
+                  className="stack"
                   onSubmit={handleSaveProfile}
                   noValidate
                 >
+                  <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
+                    {logoUrlDraft ? (
+                      <img
+                        src={logoUrlDraft}
+                        alt="School logo preview"
+                        style={{ width: 72, height: 72, objectFit: "contain", border: "1px solid var(--border)" }}
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          width: 72,
+                          height: 72,
+                          border: "1px dashed var(--border)",
+                          display: "grid",
+                          placeItems: "center",
+                          color: "var(--muted-foreground)",
+                        }}
+                      >
+                        No logo
+                      </div>
+                    )}
+                    <label className="btn btn--secondary btn--sm">
+                      {uploadingLogo ? "Uploading..." : "Upload logo"}
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        onChange={handleLogoChange}
+                        disabled={uploadingLogo}
+                        style={{ display: "none" }}
+                      />
+                    </label>
+                    {logoUrlDraft ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setLogoUrlDraft(null)}
+                      >
+                        Remove logo
+                      </Button>
+                    ) : null}
+                  </div>
+
                   <TextField
                     label="School name"
                     name="schoolName"
@@ -387,8 +490,39 @@ export function SchoolClient({
                     value={nameDraft}
                     onChange={(event) => setNameDraft(event.target.value)}
                   />
+                  <TextField
+                    label="Physical address"
+                    name="physicalAddress"
+                    value={physicalAddressDraft}
+                    onChange={(event) => setPhysicalAddressDraft(event.target.value)}
+                  />
+                  <TextField
+                    label="Primary phone"
+                    name="primaryPhone"
+                    value={primaryPhoneDraft}
+                    onChange={(event) => setPrimaryPhoneDraft(event.target.value)}
+                  />
+                  <TextField
+                    label="Secondary phone"
+                    name="secondaryPhone"
+                    value={secondaryPhoneDraft}
+                    onChange={(event) => setSecondaryPhoneDraft(event.target.value)}
+                  />
+                  <TextField
+                    label="Official email"
+                    name="officialEmail"
+                    type="email"
+                    value={officialEmailDraft}
+                    onChange={(event) => setOfficialEmailDraft(event.target.value)}
+                  />
+                  <TextField
+                    label="Website"
+                    name="website"
+                    value={websiteDraft}
+                    onChange={(event) => setWebsiteDraft(event.target.value)}
+                  />
                   <Button type="submit" loading={savingProfile}>
-                    {savingProfile ? "Saving…" : "Save name"}
+                    {savingProfile ? "Saving..." : "Save profile"}
                   </Button>
                 </form>
               )}
@@ -458,7 +592,7 @@ export function SchoolClient({
                     onChange={(event) => setYearEnd(event.target.value)}
                   />
                   <Button type="submit" loading={creatingYear}>
-                    {creatingYear ? "Adding…" : "Add year"}
+                    {creatingYear ? "Addingâ€¦" : "Add year"}
                   </Button>
                 </form>
               ) : (
@@ -470,7 +604,7 @@ export function SchoolClient({
               {years === null ? (
                 academicError === null ? (
                   <p className="muted" role="status">
-                    Loading academic years…
+                    Loading academic yearsâ€¦
                   </p>
                 ) : null
               ) : years.length === 0 ? (

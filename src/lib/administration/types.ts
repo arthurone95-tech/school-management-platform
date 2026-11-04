@@ -11,6 +11,12 @@ export interface SchoolProfile {
   readonly name: string;
   readonly code: string;
   readonly status: string;
+  readonly physicalAddress: string | null;
+  readonly primaryPhone: string | null;
+  readonly secondaryPhone: string | null;
+  readonly officialEmail: string | null;
+  readonly website: string | null;
+  readonly logoUrl: string | null;
 }
 
 export interface TermSummary {

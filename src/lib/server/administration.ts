@@ -58,7 +58,9 @@ export async function getSchoolProfile(
 ): Promise<SchoolProfile | null> {
   const { data, error } = await supabase
     .from("schools")
-    .select("id, name, code, status")
+    .select(
+      "id, name, code, status, physical_address, primary_phone, secondary_phone, official_email, website, logo_url",
+    )
     .eq("id", schoolId)
     .maybeSingle();
 
@@ -70,6 +72,12 @@ export async function getSchoolProfile(
     name: data.name as string,
     code: data.code as string,
     status: data.status as string,
+    physicalAddress: (data.physical_address as string | null) ?? null,
+    primaryPhone: (data.primary_phone as string | null) ?? null,
+    secondaryPhone: (data.secondary_phone as string | null) ?? null,
+    officialEmail: (data.official_email as string | null) ?? null,
+    website: (data.website as string | null) ?? null,
+    logoUrl: (data.logo_url as string | null) ?? null,
   };
 }
 
@@ -85,14 +93,40 @@ export async function updateSchoolProfile(options: {
   readonly supabase: ServerClient;
   readonly schoolId: string;
   readonly name: string;
+  readonly physicalAddress?: string | null;
+  readonly primaryPhone?: string | null;
+  readonly secondaryPhone?: string | null;
+  readonly officialEmail?: string | null;
+  readonly website?: string | null;
+  readonly logoUrl?: string | null;
 }): Promise<UpdateSchoolProfileResult> {
-  const { supabase, schoolId, name } = options;
+  const {
+    supabase,
+    schoolId,
+    name,
+    physicalAddress,
+    primaryPhone,
+    secondaryPhone,
+    officialEmail,
+    website,
+    logoUrl,
+  } = options;
 
   const { data, error } = await supabase
     .from("schools")
-    .update({ name })
+    .update({
+      name,
+      physical_address: physicalAddress,
+      primary_phone: primaryPhone,
+      secondary_phone: secondaryPhone,
+      official_email: officialEmail,
+      website,
+      logo_url: logoUrl,
+    })
     .eq("id", schoolId)
-    .select("id, name, code, status")
+    .select(
+      "id, name, code, status, physical_address, primary_phone, secondary_phone, official_email, website, logo_url",
+    )
     .maybeSingle();
 
   if (error) {
@@ -117,6 +151,12 @@ export async function updateSchoolProfile(options: {
       name: data.name as string,
       code: data.code as string,
       status: data.status as string,
+      physicalAddress: (data.physical_address as string | null) ?? null,
+      primaryPhone: (data.primary_phone as string | null) ?? null,
+      secondaryPhone: (data.secondary_phone as string | null) ?? null,
+      officialEmail: (data.official_email as string | null) ?? null,
+      website: (data.website as string | null) ?? null,
+      logoUrl: (data.logo_url as string | null) ?? null,
     },
   };
 }
