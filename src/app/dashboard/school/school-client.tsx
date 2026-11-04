@@ -153,7 +153,7 @@ export function SchoolClient({
         setSecondaryPhoneDraft(result.value.secondaryPhone ?? "");
         setOfficialEmailDraft(result.value.officialEmail ?? "");
         setWebsiteDraft(result.value.website ?? "");
-        setLogoUrlDraft(result.value.logoUrl);
+        setLogoUrlDraft(result.value.logoUrl ?? null);
       } else {
         setProfileError(result.message);
       }
@@ -404,6 +404,8 @@ export function SchoolClient({
     reloadAcademic();
   }
 
+  const logoPreview = logoUrlDraft ?? profile?.logoUrl ?? null;
+
   return (
     <>
       <div className="container stack">
@@ -440,9 +442,9 @@ export function SchoolClient({
                   noValidate
                 >
                   <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
-                    {logoUrlDraft ? (
+                    {logoPreview ? (
                       <img
-                        src={logoUrlDraft}
+                        src={logoPreview}
                         alt="School logo preview"
                         style={{ width: 72, height: 72, objectFit: "contain", border: "1px solid var(--border)" }}
                       />
@@ -470,12 +472,17 @@ export function SchoolClient({
                         style={{ display: "none" }}
                       />
                     </label>
-                    {logoUrlDraft ? (
+                    {logoPreview ? (
                       <Button
                         type="button"
                         size="sm"
                         variant="ghost"
-                        onClick={() => setLogoUrlDraft(null)}
+                        onClick={() => {
+                          setLogoUrlDraft(null);
+                          setProfile((current) =>
+                            current ? { ...current, logoUrl: null } : current,
+                          );
+                        }}
                       >
                         Remove logo
                       </Button>
