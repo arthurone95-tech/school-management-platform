@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Request parsing for the GES score-entry endpoint.
  *
  * Pure and isomorphic, like `requests.ts`. It validates shape and the 50-mark
@@ -31,7 +31,7 @@ export interface GesSubjectScoreInput {
   readonly subjectName: string;
   readonly classScore: number | null;
   readonly examScore: number | null;
-  readonly rubric: "VG" | "G" | "NH" | null;
+  readonly rubrics: readonly ("VG" | "G" | "NH")[];
 }
 
 export interface GesScoreSubmitInput {
@@ -167,25 +167,31 @@ export function parseGesScoreSubmitInput(
       return { ok: false, message: validated.message };
     }
 
-    let rubric: "VG" | "G" | "NH" | null = null;
-    if (has(raw, "rubric")) {
-      const rawRubric = raw["rubric"];
-      if (
-        rawRubric !== null &&
-        rawRubric !== "VG" &&
-        rawRubric !== "G" &&
-        rawRubric !== "NH"
-      ) {
+    const rubrics: ("VG" | "G" | "NH")[] = [];
+    const rawRubrics = has(raw, "rubrics")
+      ? raw["rubrics"]
+      : has(raw, "rubric")
+        ? raw["rubric"]
+        : [];
+    const rubricValues = Array.isArray(rawRubrics)
+      ? rawRubrics
+      : rawRubrics === null
+        ? []
+        : [rawRubrics];
+    for (const value of rubricValues) {
+      if (value !== "VG" && value !== "G" && value !== "NH") {
         return { ok: false, message: "Invalid qualitative rating." };
       }
-      rubric = rawRubric as "VG" | "G" | "NH" | null;
+      if (!rubrics.includes(value)) {
+        rubrics.push(value);
+      }
     }
 
     scores.push({
       subjectName,
       classScore: validated.classScore,
       examScore: validated.examScore,
-      rubric,
+      rubrics,
     });
   }
 

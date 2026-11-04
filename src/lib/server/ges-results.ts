@@ -255,7 +255,7 @@ export async function getGesSheet(input: {
       string,
       {
         readonly id: string;
-        readonly results: Map<string, "VG" | "G" | "NH" | null>;
+        readonly results: Map<string, ("VG" | "G" | "NH")[]>;
       }
     >();
 
@@ -266,15 +266,16 @@ export async function getGesSheet(input: {
         | { learner_id: string; remark: string | null }[]
         | null;
     }>) {
-      const results = new Map<string, "VG" | "G" | "NH" | null>();
+      const results = new Map<string, ("VG" | "G" | "NH")[]>();
       for (const result of assessment.assessment_results ?? []) {
-        const rubric =
-          result.remark === "VG" ||
-          result.remark === "G" ||
-          result.remark === "NH"
-            ? result.remark
-            : null;
-        results.set(result.learner_id, rubric);
+        const rubrics = (result.remark ?? "")
+          .split(",")
+          .map((value) => value.trim())
+          .filter(
+            (value): value is "VG" | "G" | "NH" =>
+              value === "VG" || value === "G" || value === "NH",
+          );
+        results.set(result.learner_id, rubrics);
       }
       assessmentBySubject.set(subjectKey(assessment.name), {
         id: assessment.id,
@@ -299,7 +300,7 @@ export async function getGesSheet(input: {
           fullName: learner.full_name,
           subjects: subjectNames.map((name) => {
             const assessment = assessmentBySubject.get(subjectKey(name));
-            const rubric = assessment?.results.get(learner.learner_id) ?? null;
+            const rubrics = assessment?.results.get(learner.learner_id) ?? [];
             return {
               subjectName: name,
               assessmentId: assessment?.id ?? null,
@@ -308,7 +309,7 @@ export async function getGesSheet(input: {
               totalScore: null,
               grade: null,
               proficiency: null,
-              rubric,
+              rubrics,
               position: null,
             };
           }),
@@ -387,7 +388,7 @@ export async function getGesSheet(input: {
         totalScore: calculated.totalScore,
         grade: calculated.grade,
         proficiency: calculated.proficiency,
-        rubric: null,
+        rubrics: [],
         position: null,
       };
     });
@@ -576,17 +577,14 @@ export async function submitGesScores(input: {
     }
 
     for (const score of submit.scores) {
-      if (
-        score.rubric !== null &&
-        score.rubric !== "VG" &&
-        score.rubric !== "G" &&
-        score.rubric !== "NH"
-      ) {
-        return {
-          ok: false,
-          reason: "invalid",
-          message: "Invalid qualitative rating.",
-        };
+      for (const rating of score.rubrics) {
+        if (rating !== "VG" && rating !== "G" && rating !== "NH") {
+          return {
+            ok: false,
+            reason: "invalid",
+            message: "Invalid qualitative rating.",
+          };
+        }
       }
     }
 
@@ -622,7 +620,7 @@ export async function submitGesScores(input: {
       const score = canonicalScores.find(
         (entry) => entry.subjectName === name,
       );
-      return score?.rubric !== null && score?.rubric !== undefined;
+      return (score?.rubrics?.length ?? 0) > 0;
     });
 
     if (missing.length > 0) {
@@ -695,7 +693,7 @@ export async function submitGesScores(input: {
     for (const score of canonicalScores) {
       const assessment = assessmentByName.get(subjectKey(score.subjectName));
       if (!assessment) {
-        if (score.rubric === null) {
+        if ((score.rubrics?.length ?? 0) === 0) {
           continue;
         }
         return {
@@ -705,14 +703,17 @@ export async function submitGesScores(input: {
         };
       }
 
-      if (score.rubric === null && !existingResults.has(assessment.id)) {
+      if ((score.rubrics?.length ?? 0) === 0 && !existingResults.has(assessment.id)) {
         continue;
       }
 
       const patch = {
         class_score: null,
         exam_score: null,
-        remark: score.rubric,
+        remark:
+          (score.rubrics?.length ?? 0) > 0
+            ? score.rubrics.join(",")
+            : null,
         graded_by: userId,
         graded_at: new Date().toISOString(),
       };

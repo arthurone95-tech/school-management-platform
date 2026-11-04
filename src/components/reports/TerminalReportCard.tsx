@@ -10,7 +10,7 @@ export interface TerminalSubject {
   readonly position?: number | string | null;
   readonly remarks?: string | null;
   readonly grade?: string | null;
-  readonly rubric?: "VG" | "G" | "NH" | null;
+  readonly rubrics?: ReadonlyArray<"VG" | "G" | "NH">;
 }
 
 export interface TerminalBills {
@@ -235,13 +235,13 @@ export function TerminalReportCard(props: TerminalReportCardProps) {
             </thead>
             <tbody>
               {subjects.map((subject) => {
-                const rating = subject.rubric ?? subject.grade;
+                const ratings = subject.rubrics ?? [];
                 return (
                   <tr key={subject.name}>
                     <td>{subject.name}</td>
-                    <td className="text-center">{rating === "VG" ? "✓" : ""}</td>
-                    <td className="text-center">{rating === "G" ? "✓" : ""}</td>
-                    <td className="text-center">{rating === "NH" ? "✓" : ""}</td>
+                    <td className="text-center">{ratings.includes("VG") ? "✓" : ""}</td>
+                    <td className="text-center">{ratings.includes("G") ? "✓" : ""}</td>
+                    <td className="text-center">{ratings.includes("NH") ? "✓" : ""}</td>
                     <td>{subject.remarks ?? "-"}</td>
                   </tr>
                 );

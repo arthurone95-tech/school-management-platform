@@ -34,8 +34,8 @@ export interface GesSubjectScore {
   readonly totalScore: number | null;
   readonly grade: GesGrade | null;
   readonly proficiency: Proficiency | null;
-  /** Qualitative rating for early-years classes; null for numeric subjects. */
-  readonly rubric: GesRubric | null;
+  /** Qualitative ratings for early-years classes; empty for numeric subjects. */
+  readonly rubrics: readonly GesRubric[];
   /** Competition rank across the class, highest total first. */
   readonly position: number | null;
 }
