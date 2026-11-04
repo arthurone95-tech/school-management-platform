@@ -38,7 +38,7 @@ export interface WriteFailure {
   readonly message: string;
 }
 
-function classify(error: unknown): FailureReason {
+export function classify(error: unknown): FailureReason {
   const code = (error as { code?: string } | null)?.code;
   switch (code) {
     case "23505":
@@ -52,12 +52,12 @@ function classify(error: unknown): FailureReason {
 }
 
 /** RLS refusals surface as `42501`, or `PGRST301` through PostgREST. */
-function isPolicyRefusal(error: unknown): boolean {
+export function isPolicyRefusal(error: unknown): boolean {
   const code = (error as { code?: string } | null)?.code;
   return code === "42501" || code === "PGRST301";
 }
 
-function failureMessage(reason: FailureReason, subject: string): string {
+export function failureMessage(reason: FailureReason, subject: string): string {
   switch (reason) {
     case "duplicate":
       return `That ${subject.toLowerCase()} already exists.`;
@@ -243,6 +243,7 @@ interface AssessmentRow {
   readonly subject_id: string | null;
   readonly term_id: string | null;
   readonly name: string;
+  readonly framework: "ges_standard" | "custom";
   readonly max_score: number;
   readonly assessed_on: string;
   readonly notes: string | null;
@@ -252,20 +253,22 @@ interface AssessmentRow {
 }
 
 const ASSESSMENT_SELECT =
-  "id, class_id, subject_id, term_id, name, max_score, assessed_on, notes, is_active, classes ( name ), subjects ( name )";
+  "id, class_id, subject_id, term_id, name, framework, max_score, assessed_on, notes, is_active, classes ( name ), subjects ( name )";
 
 export async function listAssessments(input: {
   readonly supabase: ServerClient;
   readonly schoolId: string;
   readonly classId: string | null;
   readonly includeInactive: boolean;
+  readonly framework: "ges_standard" | "custom";
 }): Promise<AssessmentSummary[] | null> {
   const { supabase, schoolId } = input;
 
   let query = supabase
     .from("assessments")
     .select(ASSESSMENT_SELECT)
-    .eq("school_id", schoolId);
+    .eq("school_id", schoolId)
+    .eq("framework", input.framework);
 
   if (input.classId !== null) {
     query = query.eq("class_id", input.classId);
@@ -379,6 +382,7 @@ export async function createAssessment(input: {
       max_score: input.maxScore,
       assessed_on: input.assessedOn,
       notes: input.notes,
+      framework: "custom",
     })
     .select(ASSESSMENT_SELECT)
     .maybeSingle();
@@ -529,6 +533,14 @@ export async function getResultSheet(input: {
   }
 
   const assessment = assessmentData as AssessmentRow;
+  if (assessment.framework !== "custom") {
+    return {
+      ok: false,
+      reason: "invalid",
+      message:
+        "This assessment uses the GES 50 + 50 framework. Open the GES score sheet instead.",
+    };
+  }
   const maxScore = Number(assessment.max_score);
 
   const [
@@ -640,7 +652,7 @@ export async function submitResultSheet(input: {
 
   const { data: assessmentData, error: assessmentError } = await supabase
     .from("assessments")
-    .select("id, class_id, is_active")
+    .select("id, class_id, is_active, framework")
     .eq("id", assessmentId)
     .eq("school_id", schoolId)
     .maybeSingle();
@@ -664,7 +676,17 @@ export async function submitResultSheet(input: {
     id: string;
     class_id: string;
     is_active: boolean;
+    framework: "ges_standard" | "custom";
   };
+
+  if (assessment.framework !== "custom") {
+    return {
+      ok: false,
+      reason: "invalid",
+      message:
+        "This assessment uses the GES 50 + 50 framework. Record it on the GES score sheet instead.",
+    };
+  }
 
   if (!assessment.is_active) {
     return {
@@ -798,6 +820,7 @@ export async function buildClassAcademicReport(input: {
     )
     .eq("school_id", schoolId)
     .eq("class_id", classId)
+    .eq("framework", "custom")
     .eq("is_active", true);
 
   if (input.from !== null) {

@@ -49,6 +49,18 @@ function ordinalSuffix(n: number): string {
   return `${num}${s[(v - 20) % 10] || s[v] || s[0]}`;
 }
 
+function positionLabel(position: number | string | null | undefined): string {
+  if (position === null || position === undefined || position === "-") {
+    return "-";
+  }
+  const numeric = typeof position === "number" ? position : Number(position);
+  return Number.isFinite(numeric) ? ordinalSuffix(numeric) : String(position);
+}
+
+function money(value: number | null | undefined): string {
+  return typeof value === "number" ? `GHS ${value.toFixed(2)}` : "–";
+}
+
 export function TerminalReportCard(props: TerminalReportCardProps) {
   const {
     schoolName,
@@ -79,25 +91,33 @@ export function TerminalReportCard(props: TerminalReportCardProps) {
   let totalClass = 0;
   let totalExam = 0;
   let totalOverall = 0;
+  let markedSubjects = 0;
   const subjectRows: ReactNode[] = [];
 
   if (hasNumeric) {
     for (const subject of numericSubjects) {
-      const cs = subject.classScore ?? 0;
-      const es = subject.examScore ?? 0;
-      const ts = subject.totalScore ?? cs + es;
-      totalClass += cs;
-      totalExam += es;
-      totalOverall += ts;
+      const cs = subject.classScore ?? null;
+      const es = subject.examScore ?? null;
+      const ts =
+        subject.totalScore ??
+        (cs !== null && es !== null ? cs + es : null);
+      if (cs !== null) {
+        totalClass += cs;
+      }
+      if (es !== null) {
+        totalExam += es;
+      }
+      if (ts !== null) {
+        totalOverall += ts;
+        markedSubjects += 1;
+      }
       subjectRows.push(
         <tr key={subject.name}>
           <td>{subject.name}</td>
-          <td className="text-center">{cs}</td>
-          <td className="text-center">{es}</td>
-          <td className="text-center">{ts}</td>
-          <td className="text-center">
-            {subject.position ?? "-"}
-          </td>
+          <td className="text-center">{cs ?? "–"}</td>
+          <td className="text-center">{es ?? "–"}</td>
+          <td className="text-center">{ts ?? "–"}</td>
+          <td className="text-center">{positionLabel(subject.position)}</td>
           <td>{subject.remarks ?? "-"}</td>
         </tr>,
       );
@@ -108,13 +128,13 @@ export function TerminalReportCard(props: TerminalReportCardProps) {
           <strong>TOTAL</strong>
         </td>
         <td className="text-center">
-          <strong>{totalClass.toFixed(1)}</strong>
+          <strong>{markedSubjects > 0 ? totalClass.toFixed(1) : "–"}</strong>
         </td>
         <td className="text-center">
-          <strong>{totalExam.toFixed(1)}</strong>
+          <strong>{markedSubjects > 0 ? totalExam.toFixed(1) : "–"}</strong>
         </td>
         <td className="text-center">
-          <strong>{totalOverall.toFixed(1)}</strong>
+          <strong>{markedSubjects > 0 ? totalOverall.toFixed(1) : "–"}</strong>
         </td>
         <td className="text-center">-</td>
         <td>-</td>
@@ -145,6 +165,20 @@ export function TerminalReportCard(props: TerminalReportCardProps) {
   const createdAtDisplay = createdAt
     ? new Date(createdAt).toLocaleDateString("en-GB")
     : "-";
+
+  const billParts = [
+    bills?.schoolFees,
+    bills?.arrears,
+    bills?.motivationalFees,
+    bills?.maintenanceFees,
+    bills?.firstAid,
+  ];
+  const computedBillTotal = billParts.every(
+    (value): value is number => typeof value === "number",
+  )
+    ? billParts.reduce((sum, value) => sum + value, 0)
+    : null;
+  const billTotal = bills?.total ?? computedBillTotal;
 
   return (
     <>
@@ -226,16 +260,16 @@ export function TerminalReportCard(props: TerminalReportCardProps) {
           <p style={{ margin: 0 }}><strong>HEAD TEACHER&apos;S REMARKS:</strong> {(headTeacherRemarks ?? "-").toUpperCase()}</p>
         </div>
 
-        {bills && bills.total !== undefined && bills.total !== null ? (
+        {bills ? (
           <div style={{ margin: "8px 0", padding: "8px 12px", border: "1px solid #000", fontSize: "8pt" }}>
             <h4 style={{ margin: "0 0 4px 0" }}>Next Term Bills</h4>
-            <p style={{ margin: "2px 0" }}><strong>School Fees:</strong> GHS {(bills.schoolFees ?? 0).toFixed(2)}</p>
-            <p style={{ margin: "2px 0" }}><strong>Arrears:</strong> GHS {(bills.arrears ?? 0).toFixed(2)}</p>
-            <p style={{ margin: "2px 0" }}><strong>Motivational Fees:</strong> GHS {(bills.motivationalFees ?? 0).toFixed(2)}</p>
-            <p style={{ margin: "2px 0" }}><strong>Maintenance Fees:</strong> GHS {(bills.maintenanceFees ?? 0).toFixed(2)}</p>
-            <p style={{ margin: "2px 0" }}><strong>First Aid:</strong> GHS {(bills.firstAid ?? 0).toFixed(2)}</p>
+            <p style={{ margin: "2px 0" }}><strong>School Fees:</strong> {money(bills.schoolFees)}</p>
+            <p style={{ margin: "2px 0" }}><strong>Arrears:</strong> {money(bills.arrears)}</p>
+            <p style={{ margin: "2px 0" }}><strong>Motivational Fees:</strong> {money(bills.motivationalFees)}</p>
+            <p style={{ margin: "2px 0" }}><strong>Maintenance Fees:</strong> {money(bills.maintenanceFees)}</p>
+            <p style={{ margin: "2px 0" }}><strong>First Aid:</strong> {money(bills.firstAid)}</p>
             <hr style={{ margin: "4px 0", border: "1px dashed #ccc" }} />
-            <p style={{ margin: "2px 0", fontWeight: "bold" }}><strong>TOTAL:</strong> GHS {(bills.total ?? 0).toFixed(2)}</p>
+            <p style={{ margin: "2px 0", fontWeight: "bold" }}><strong>TOTAL:</strong> {money(billTotal)}</p>
           </div>
         ) : null}
 

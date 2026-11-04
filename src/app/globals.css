@@ -892,3 +892,222 @@ body.sidebar-collapsed .app-main {
   background: var(--surface-muted);
   color: var(--foreground);
 }
+
+/* ---------- GES framework reference ---------- */
+
+.framework-ref {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-muted);
+}
+
+.framework-ref__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.625rem 0.875rem;
+  cursor: pointer;
+  list-style: none;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.framework-ref__summary::-webkit-details-marker,
+.framework-ref__section-summary::-webkit-details-marker {
+  display: none;
+}
+
+.framework-ref__summary::before {
+  content: "\25B8";
+  flex: none;
+  color: var(--muted-foreground);
+}
+
+.framework-ref[open] > .framework-ref__summary::before {
+  content: "\25BE";
+}
+
+.framework-ref__title {
+  flex: 1;
+}
+
+.framework-ref__hint {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+
+.framework-ref__body {
+  padding: 0 0.875rem 0.875rem;
+}
+
+.framework-ref__section {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.framework-ref__section-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  list-style: none;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.framework-ref__chevron {
+  flex: none;
+  color: var(--muted-foreground);
+  transition: transform 0.15s ease;
+}
+
+.framework-ref__section[open] .framework-ref__chevron {
+  transform: rotate(180deg);
+}
+
+.framework-ref__section-body {
+  padding: 0 0.75rem 0.75rem;
+  font-size: 0.875rem;
+}
+
+.framework-ref__list {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.framework-ref__subjects {
+  margin-top: 0.75rem;
+}
+
+.framework-ref__subjects-title {
+  margin: 0 0 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.framework-ref__chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+.framework-ref__chip {
+  padding: 0.125rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-muted);
+  font-size: 0.75rem;
+}
+
+.framework-ref__table-wrap {
+  margin-top: 0.75rem;
+  overflow-x: auto;
+}
+
+.framework-ref__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+.framework-ref__table th,
+.framework-ref__table td {
+  border: 1px solid var(--border);
+  padding: 0.3rem 0.5rem;
+  text-align: left;
+}
+
+.framework-ref__table th {
+  background: var(--surface-muted);
+  font-weight: 600;
+}
+
+/* ---------- GES 50 + 50 score entry and terminal report ---------- */
+
+.ges-score-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.ges-score-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.ges-score-table th,
+.ges-score-table td {
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.ges-score-table thead th {
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+
+.ges-score-table tbody th {
+  font-weight: 600;
+  min-width: 10rem;
+}
+
+.ges-score-input {
+  min-width: 4.5rem;
+  max-width: 6rem;
+}
+
+@media (max-width: 40rem) {
+  .ges-score-table {
+    min-width: 44rem;
+  }
+}
+
+.terminal-report-card {
+  width: 100%;
+  padding: 1.5rem;
+  overflow-x: auto;
+  color: #000;
+  background: #fff;
+  border: 1px solid var(--border);
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .terminal-report-card,
+  .terminal-report-card * {
+    visibility: visible;
+  }
+
+  .terminal-report-card {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+    border: none;
+    padding: 10px 15px;
+    color: #000;
+    background: #fff;
+    overflow: visible;
+  }
+}

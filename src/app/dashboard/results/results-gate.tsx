@@ -3,10 +3,11 @@ import "server-only";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 
+import { getAssessmentMode } from "@/lib/server/assessment-mode";
 import { loadStaffContext } from "@/lib/server/staff-context";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-import { ResultsClient } from "./results-client";
+import { ResultsShell } from "./results-shell";
 
 /**
  * Session-gated half of the results page (D-031).
@@ -48,8 +49,14 @@ export async function ResultsGate() {
     redirect("/dashboard");
   }
 
+  const assessmentMode = await getAssessmentMode(supabase, context.schoolId);
+  if (!assessmentMode) {
+    redirect("/dashboard");
+  }
+
   return (
-    <ResultsClient
+    <ResultsShell
+      assessmentMode={assessmentMode}
       email={context.email}
       role={context.role}
       schoolName={context.schoolName}

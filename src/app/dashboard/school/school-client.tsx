@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 
@@ -12,19 +11,13 @@ import {
   parseAcademicYearCreateInput,
   parseAcademicYearUpdateInput,
   parseSchoolProfileUpdateInput,
-  parseSubjectCreateInput,
-  parseSubjectUpdateInput,
   parseTermCreateInput,
   parseTermUpdateInput,
 } from "@/lib/administration/requests";
 import type {
   AcademicYearSummary,
   SchoolProfile,
-  SubjectSummary,
 } from "@/lib/administration/types";
-import { parseGradeBandCreateInput } from "@/lib/academics/requests";
-import type { GradeBandSummary } from "@/lib/academics/types";
-import { roleLabel } from "@/lib/staff/roles";
 import { AssessmentModeToggle } from "./assessment-mode-toggle";
 
 const NETWORK_MESSAGE =
@@ -85,32 +78,16 @@ async function getJson<T>(
 }
 
 export function SchoolClient({
-  email,
-  role,
-  schoolName,
   canManageSchool,
   canReadAcademic,
   canManageAcademic,
-  canReadSubjects,
   canManageSubjects,
-  canViewClasses,
-  canViewStudents,
-  canViewStaff,
-  canReadGrading,
   canManageGrading,
 }: {
-  readonly email: string;
-  readonly role: string;
-  readonly schoolName: string | null;
   readonly canManageSchool: boolean;
   readonly canReadAcademic: boolean;
   readonly canManageAcademic: boolean;
-  readonly canReadSubjects: boolean;
   readonly canManageSubjects: boolean;
-  readonly canViewClasses: boolean;
-  readonly canViewStudents: boolean;
-  readonly canViewStaff: boolean;
-  readonly canReadGrading: boolean;
   readonly canManageGrading: boolean;
 }) {
   const router = useRouter();
@@ -147,30 +124,6 @@ export function SchoolClient({
   const [editTermStart, setEditTermStart] = useState("");
   const [editTermEnd, setEditTermEnd] = useState("");
 
-  const [subjects, setSubjects] = useState<SubjectSummary[] | null>(null);
-  const [subjectError, setSubjectError] = useState<string | null>(null);
-  const [subjectNotice, setSubjectNotice] = useState<string | null>(null);
-  const [subjectKey, setSubjectKey] = useState(0);
-  const [assessmentMode, setAssessmentMode] = useState<"ges_standard" | "custom" | null>(null);
-  const [subjectName, setSubjectName] = useState("");
-  const [subjectCode, setSubjectCode] = useState("");
-  const [creatingSubject, setCreatingSubject] = useState(false);
-  const [editingSubjectId, setEditingSubjectId] = useState<string | null>(null);
-  const [editSubjectName, setEditSubjectName] = useState("");
-  const [editSubjectCode, setEditSubjectCode] = useState("");
-
-  const [bands, setBands] = useState<GradeBandSummary[] | null>(null);
-  const [bandError, setBandError] = useState<string | null>(null);
-  const [bandNotice, setBandNotice] = useState<string | null>(null);
-  const [bandMin, setBandMin] = useState("");
-  const [bandLabel, setBandLabel] = useState("");
-  const [bandRemark, setBandRemark] = useState("");
-  const [bandPassing, setBandPassing] = useState(true);
-  const [creatingBand, setCreatingBand] = useState(false);
-  const [busyBandId, setBusyBandId] = useState<string | null>(null);
-
-  const [signingOut, setSigningOut] = useState(false);
-
   useEffect(() => {
     if (!canManageSchool) {
       return;
@@ -195,29 +148,6 @@ export function SchoolClient({
       cancelled = true;
     };
   }, [canManageSchool]);
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const res = await fetch("/api/staff/school/assessment-mode", {
-          headers: { Accept: "application/json" },
-        });
-        const payload = (await res.json().catch(() => ({}))) as {
-          ok?: boolean;
-          mode?: "ges_standard" | "custom";
-        };
-        if (!cancelled && payload.ok && payload.mode) {
-          setAssessmentMode(payload.mode);
-        }
-      } catch {
-        // leave mode unset
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     if (!canReadAcademic) {
@@ -246,134 +176,9 @@ export function SchoolClient({
     };
   }, [canReadAcademic, academicKey]);
 
-  useEffect(() => {
-    if (!canReadSubjects) {
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      const result = await getJson(
-        "/api/staff/subjects",
-        (payload) =>
-          (payload["subjects"] as SubjectSummary[] | undefined) ?? null,
-      );
-      if (cancelled) {
-        return;
-      }
-      if (result.ok) {
-        setSubjects(result.value);
-        setSubjectError(null);
-      } else {
-        setSubjectError(result.message);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [canReadSubjects, subjectKey]);
-
-  useEffect(() => {
-    if (!canReadGrading) {
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      const result = await getJson(
-        "/api/staff/grade-bands",
-        (payload) =>
-          (payload["bands"] as GradeBandSummary[] | undefined) ?? null,
-      );
-      if (cancelled) {
-        return;
-      }
-      if (result.ok) {
-        setBands(result.value);
-        setBandError(null);
-      } else {
-        setBandError(result.message);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [canReadGrading, subjectKey]);
-
-  async function handleCreateBand(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setBandError(null);
-    setBandNotice(null);
-
-    const parsed = parseGradeBandCreateInput({
-      minPercentage: Number(bandMin),
-      label: bandLabel,
-      remark: bandRemark,
-      isPassing: bandPassing,
-    });
-    if (!parsed.ok) {
-      setBandError(parsed.message);
-      return;
-    }
-
-    setCreatingBand(true);
-    const created = await postJson("/api/staff/grade-bands", parsed.value);
-    setCreatingBand(false);
-
-    if (!created.ok) {
-      setBandError(created.message);
-      return;
-    }
-    setBandMin("");
-    setBandLabel("");
-    setBandRemark("");
-    setBandNotice("Grade band added.");
-    setBands(null);
-    setSubjectKey((key) => key + 1);
-  }
-
-  async function handleToggleBandPassing(band: GradeBandSummary) {
-    setBandError(null);
-    setBandNotice(null);
-    setBusyBandId(band.id);
-    const done = await postJson("/api/staff/grade-bands/update", {
-      bandId: band.id,
-      isPassing: !band.isPassing,
-    });
-    setBusyBandId(null);
-    if (!done.ok) {
-      setBandError(done.message);
-      return;
-    }
-    setBands(null);
-    setSubjectKey((key) => key + 1);
-  }
-
-  async function handleDeleteBand(band: GradeBandSummary) {
-    setBandError(null);
-    setBandNotice(null);
-    setBusyBandId(band.id);
-    const done = await postJson("/api/staff/grade-bands/update", {
-      bandId: band.id,
-      action: "delete",
-    });
-    setBusyBandId(null);
-    if (!done.ok) {
-      setBandError(done.message);
-      return;
-    }
-    setBandNotice(
-      "Grade band removed. Marks already recorded keep their score and percentage.",
-    );
-    setBands(null);
-    setSubjectKey((key) => key + 1);
-  }
-
   function reloadAcademic() {
     setYears(null);
     setAcademicKey((key) => key + 1);
-  }
-  function reloadSubjects() {
-    setSubjects(null);
-    setSubjectKey((key) => key + 1);
   }
 
   async function handleSaveProfile(event: FormEvent<HTMLFormElement>) {
@@ -539,105 +344,16 @@ export function SchoolClient({
     reloadAcademic();
   }
 
-  async function handleCreateSubject(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSubjectError(null);
-    setSubjectNotice(null);
-
-    const parsed = parseSubjectCreateInput({
-      name: subjectName,
-      code: subjectCode,
-    });
-    if (!parsed.ok) {
-      setSubjectError(parsed.message);
-      return;
-    }
-
-    setCreatingSubject(true);
-    const result = await postJson("/api/staff/subjects", parsed.value);
-    setCreatingSubject(false);
-    if (!result.ok) {
-      setSubjectError(result.message);
-      return;
-    }
-    setSubjectName("");
-    setSubjectCode("");
-    setSubjectNotice(`Added ${parsed.value.name}.`);
-    reloadSubjects();
-  }
-
-  async function sendSubjectUpdate(body: {
-    readonly subjectId: string;
-    readonly name?: string;
-    readonly code?: string | null;
-    readonly isActive?: boolean;
-  }): Promise<boolean> {
-    setSubjectError(null);
-    setSubjectNotice(null);
-
-    const parsed = parseSubjectUpdateInput(body);
-    if (!parsed.ok) {
-      setSubjectError(parsed.message);
-      return false;
-    }
-
-    setBusyId(parsed.value.subjectId);
-    const result = await postJson("/api/staff/subjects/update", parsed.value);
-    setBusyId(null);
-    if (!result.ok) {
-      setSubjectError(result.message);
-      return false;
-    }
-    return true;
-  }
-
-  async function handleToggleSubject(subject: SubjectSummary) {
-    const next = !subject.isActive;
-    if (await sendSubjectUpdate({ subjectId: subject.id, isActive: next })) {
-      setSubjectNotice(
-        next ? `Reactivated ${subject.name}.` : `Deactivated ${subject.name}.`,
-      );
-      reloadSubjects();
-    }
-  }
-
-  async function handleSaveSubject(subject: SubjectSummary) {
-    if (
-      await sendSubjectUpdate({
-        subjectId: subject.id,
-        name: editSubjectName,
-        code: editSubjectCode,
-      })
-    ) {
-      setEditingSubjectId(null);
-      setSubjectNotice(`Saved ${editSubjectName}.`);
-      reloadSubjects();
-    }
-  }
-
-  async function handleSignOut() {
-    setSigningOut(true);
-    try {
-      await fetch("/api/staff/sign-out", { method: "POST" });
-    } catch {
-      // Best effort; the redirect below still applies.
-    }
-    router.replace("/sign-in");
-    router.refresh();
-  }
-
   return (
     <>
       <div className="container stack">
         <div className="stack stack--sm">
           <h1>School settings</h1>
           <p className="muted">
-            Your school profile, the academic calendar and the subjects it
-            teaches. These belong only to your school.
+            Your school profile, the academic calendar and the assessment
+            framework it uses. These belong only to your school.
           </p>
         </div>
-
-        <AssessmentModeToggle onModeChange={setAssessmentMode} />
 
         {/* School profile */}
         {canManageSchool ? (
@@ -1039,298 +755,10 @@ export function SchoolClient({
           </Card>
         ) : null}
 
-        {/* Subjects (custom mode only) */}
-        {canReadSubjects && assessmentMode !== "ges_standard" ? (
-          <Card>
-            <CardHeader
-              title="Subjects"
-              description="Subjects taught by your school. Deactivating a subject removes it from new assignments but keeps past records interpretable."
-              actions={
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={reloadSubjects}
-                  loading={subjects === null && subjectError === null}
-                >
-                  Refresh
-                </Button>
-              }
-            />
-            <CardBody className="stack stack--sm">
-              {subjectNotice ? (
-                <Alert variant="success">{subjectNotice}</Alert>
-              ) : null}
-              {subjectError ? (
-                <Alert variant="error">{subjectError}</Alert>
-              ) : null}
-
-              {canManageSubjects ? (
-                <form
-                  className="inline-form"
-                  onSubmit={handleCreateSubject}
-                  noValidate
-                >
-                  <TextField
-                    label="Subject name"
-                    name="subjectName"
-                    autoComplete="off"
-                    required
-                    value={subjectName}
-                    onChange={(event) => setSubjectName(event.target.value)}
-                  />
-                  <TextField
-                    label="Code (optional)"
-                    name="subjectCode"
-                    autoComplete="off"
-                    value={subjectCode}
-                    onChange={(event) => setSubjectCode(event.target.value)}
-                  />
-                  <Button type="submit" loading={creatingSubject}>
-                    {creatingSubject ? "Adding…" : "Add subject"}
-                  </Button>
-                </form>
-              ) : (
-                <Alert variant="info">Your role cannot change subjects.</Alert>
-              )}
-
-              {subjects === null ? (
-                subjectError === null ? (
-                  <p className="muted" role="status">
-                    Loading subjects…
-                  </p>
-                ) : null
-              ) : subjects.length === 0 ? (
-                <p className="muted">No subjects yet.</p>
-              ) : (
-                <ul className="record-list">
-                  {subjects.map((subject) => (
-                    <li className="record" key={subject.id}>
-                      <div className="record__main">
-                        {editingSubjectId === subject.id ? (
-                          <form
-                            className="inline-form"
-                            onSubmit={(event) => {
-                              event.preventDefault();
-                              void handleSaveSubject(subject);
-                            }}
-                            noValidate
-                          >
-                            <TextField
-                              label="Subject name"
-                              name={`subject-name-${subject.id}`}
-                              autoComplete="off"
-                              value={editSubjectName}
-                              onChange={(event) =>
-                                setEditSubjectName(event.target.value)
-                              }
-                            />
-                            <TextField
-                              label="Code (optional)"
-                              name={`subject-code-${subject.id}`}
-                              autoComplete="off"
-                              value={editSubjectCode}
-                              onChange={(event) =>
-                                setEditSubjectCode(event.target.value)
-                              }
-                            />
-                            <Button
-                              type="submit"
-                              size="sm"
-                              loading={busyId === subject.id}
-                            >
-                              Save subject
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setEditingSubjectId(null)}
-                            >
-                              Cancel
-                            </Button>
-                          </form>
-                        ) : (
-                          <>
-                            <p className="record__title">
-                              {subject.name}
-                              {subject.code ? (
-                                <span className="muted"> ({subject.code})</span>
-                              ) : null}
-                            </p>
-                            <p className="record__meta">
-                              <span
-                                className={`badge badge--${subject.isActive ? "active" : "inactive"}`}
-                              >
-                                {subject.isActive ? "Active" : "Inactive"}
-                              </span>
-                            </p>
-                          </>
-                        )}
-                      </div>
-                      {canManageSubjects && editingSubjectId !== subject.id ? (
-                        <div className="record__actions">
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => {
-                              setEditingSubjectId(subject.id);
-                              setEditSubjectName(subject.name);
-                              setEditSubjectCode(subject.code ?? "");
-                            }}
-                          >
-                            Edit
-                          </Button>
-                          <Button
-                            variant={subject.isActive ? "danger" : "secondary"}
-                            size="sm"
-                            loading={busyId === subject.id}
-                            onClick={() => void handleToggleSubject(subject)}
-                          >
-                            {subject.isActive ? "Deactivate" : "Reactivate"}
-                          </Button>
-                        </div>
-                      ) : null}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </CardBody>
-          </Card>
-        ) : null}
-
-        {/* Grading bands (custom mode only) */}
-        {canReadGrading && assessmentMode !== "ges_standard" ? (
-          <Card>
-            <CardHeader
-              title="Grading bands"
-              description="Your school’s own grading scale. Without bands, marks are still recorded and reported as percentages."
-              actions={
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => {
-                    setBands(null);
-                    setSubjectKey((key) => key + 1);
-                  }}
-                  loading={bands === null && bandError === null}
-                >
-                  Refresh
-                </Button>
-              }
-            />
-            <CardBody className="stack stack--sm">
-              {bandNotice ? (
-                <Alert variant="success">{bandNotice}</Alert>
-              ) : null}
-              {bandError ? <Alert variant="error">{bandError}</Alert> : null}
-
-              <Alert variant="info">
-                A band covers everything from its minimum up to the next band.
-                Add bands from the lowest upwards: a new band that falls inside
-                an existing one is refused, because it would quietly change what
-                last term&rsquo;s grades mean.
-              </Alert>
-
-              {canManageGrading ? (
-                <form
-                  className="inline-form"
-                  onSubmit={handleCreateBand}
-                  noValidate
-                >
-                  <TextField
-                    label="Minimum %"
-                    name="bandMin"
-                    type="number"
-                    min={0}
-                    max={100}
-                    step="any"
-                    required
-                    value={bandMin}
-                    onChange={(event) => setBandMin(event.target.value)}
-                  />
-                  <TextField
-                    label="Label"
-                    name="bandLabel"
-                    autoComplete="off"
-                    required
-                    value={bandLabel}
-                    onChange={(event) => setBandLabel(event.target.value)}
-                  />
-                  <TextField
-                    label="Remark (optional)"
-                    name="bandRemark"
-                    autoComplete="off"
-                    value={bandRemark}
-                    onChange={(event) => setBandRemark(event.target.value)}
-                  />
-                  <span className="cluster">
-                    <input
-                      id="band-passing"
-                      type="checkbox"
-                      checked={bandPassing}
-                      onChange={(event) => setBandPassing(event.target.checked)}
-                    />
-                    <label htmlFor="band-passing">Counts as passing</label>
-                  </span>
-                  <Button type="submit" loading={creatingBand}>
-                    {creatingBand ? "Adding…" : "Add band"}
-                  </Button>
-                </form>
-              ) : (
-                <Alert variant="info">
-                  Your role can see the grading scale but not change it.
-                </Alert>
-              )}
-
-              {bands === null ? (
-                bandError === null ? (
-                  <p className="muted" role="status">
-                    Loading grading bands…
-                  </p>
-                ) : null
-              ) : bands.length === 0 ? (
-                <Alert variant="info">
-                  No grading bands configured. Marks will be recorded and
-                  reported as percentages only.
-                </Alert>
-              ) : (
-                <ul className="record-list">
-                  {bands.map((band) => (
-                    <li key={band.id} className="record">
-                      <div className="record__main">
-                        <p className="record__title">{band.label}</p>
-                        <p className="record__meta">
-                          {band.minPercentage}% and above
-                          {band.remark ? ` · ${band.remark}` : ""}
-                          {band.isPassing ? "" : " · does not count as passing"}
-                        </p>
-                      </div>
-                      {canManageGrading ? (
-                        <div className="record__actions">
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            loading={busyBandId === band.id}
-                            onClick={() => void handleToggleBandPassing(band)}
-                          >
-                            {band.isPassing ? "Not passing" : "Passing"}
-                          </Button>
-                          <Button
-                            variant="danger"
-                            size="sm"
-                            loading={busyBandId === band.id}
-                            onClick={() => void handleDeleteBand(band)}
-                          >
-                            Remove
-                          </Button>
-                        </div>
-                      ) : null}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </CardBody>
-          </Card>
-        ) : null}
+        <AssessmentModeToggle
+          canManage={canManageSchool}
+          canConfigure={canManageSubjects || canManageGrading}
+        />
       </div>
     </>
   );

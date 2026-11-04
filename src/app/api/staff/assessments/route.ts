@@ -47,6 +47,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     schoolId: access.schoolId,
     classId: rawClass === null ? null : rawClass.trim(),
     includeInactive: params.get("includeInactive") === "true",
+    framework: "custom",
   });
 
   if (assessments === null) {

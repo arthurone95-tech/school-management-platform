@@ -7,7 +7,10 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export async function GET(): Promise<NextResponse> {
   const supabase = await createSupabaseServerClient();
-  const access = await resolveSchoolAccess(supabase, "school.manage");
+  // Any staff member with result visibility may read the active mode so the
+  // settings page can explain which framework is in force. Only an
+  // administrator may change it (see POST).
+  const access = await resolveSchoolAccess(supabase, "grade.read");
   if (!access.ok) {
     return json({ ok: false, error: access.message }, access.status);
   }
