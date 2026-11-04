@@ -146,6 +146,7 @@ export function SchoolClient({
         return;
       }
       if (result.ok) {
+        setProfileError(null);
         setProfile(result.value);
         setNameDraft(result.value.name);
         setPhysicalAddressDraft(result.value.physicalAddress ?? "");
@@ -407,8 +408,7 @@ export function SchoolClient({
   const logoPreview = logoUrlDraft ?? profile?.logoUrl ?? null;
 
   return (
-    <>
-      <div className="container stack">
+    <div className="container stack">
         <div className="stack stack--sm">
           <h1>School settings</h1>
           <p className="muted">
@@ -901,6 +901,5 @@ export function SchoolClient({
           canConfigure={canManageSubjects || canManageGrading}
         />
       </div>
-    </>
   );
 }
