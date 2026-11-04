@@ -160,7 +160,7 @@ export function GesResults({
   const [selectedLearnerId, setSelectedLearnerId] = useState("");
   const [reportLearnerId, setReportLearnerId] = useState("");
   const [draft, setDraft] = useState<ScoreDraft>({});
-  const [rubricDraft, setRubricDraft] = useState<Record<string, GesRubric[]>>({});
+  const [rubricDraft, setRubricDraft] = useState<Record<string, GesRubric | null>>({});
   const [draftError, setDraftError] = useState<string | null>(null);
 
   const initialisedTerm = useRef(false);
@@ -262,10 +262,10 @@ export function GesResults({
       sheet?.learners.find((entry) => entry.learnerId === learnerId) ?? null;
     setSelectedLearnerId(learnerId);
     setDraft(learner ? draftFor(learner) : {});
-    const nextRubric: Record<string, GesRubric[]> = {};
+    const nextRubric: Record<string, GesRubric | null> = {};
     if (learner) {
       for (const subject of learner.subjects) {
-        nextRubric[subject.subjectName] = [...subject.rubrics];
+        nextRubric[subject.subjectName] = subject.rubric;
       }
     }
     setRubricDraft(nextRubric);
@@ -360,7 +360,7 @@ export function GesResults({
         subjectName,
         classScore: null,
         examScore: null,
-        rubrics: rubricDraft[subjectName] ?? [],
+        rubric: rubricDraft[subjectName] ?? null,
       })),
     });
     setSaving(false);
@@ -375,10 +375,10 @@ export function GesResults({
       result.sheet.learners.find(
         (entry) => entry.learnerId === selectedLearner.learnerId,
       ) ?? null;
-    const nextRubric: Record<string, GesRubric[]> = {};
+    const nextRubric: Record<string, GesRubric | null> = {};
     if (updated) {
       for (const subject of updated.subjects) {
-        nextRubric[subject.subjectName] = [...subject.rubrics];
+        nextRubric[subject.subjectName] = subject.rubric;
       }
     }
     setRubricDraft(nextRubric);
@@ -395,7 +395,7 @@ export function GesResults({
         position: subject.position,
         remarks: subject.proficiency,
         grade: subject.grade,
-        rubrics: [...subject.rubrics],
+        rubric: subject.rubric,
       }))
     : [];
 
@@ -738,33 +738,34 @@ export function GesResults({
                           {(["VG", "G", "NH"] as const).map((option) => (
                             <label key={option} className="ges-rubric-option">
                               <input
-                                type="checkbox"
+                                type="radio"
+                                name={`rubric-${entry.name}`}
                                 value={option}
-                                checked={(rubricDraft[entry.name] ?? []).includes(option)}
-                                onChange={(event) =>
-                                  setRubricDraft((current) => {
-                                    const currentValues = current[entry.name] ?? [];
-                                    if (event.target.checked) {
-                                      return {
-                                        ...current,
-                                        [entry.name]: currentValues.includes(option)
-                                          ? currentValues
-                                          : [...currentValues, option],
-                                      };
-                                    }
-                                    return {
-                                      ...current,
-                                      [entry.name]: currentValues.filter(
-                                        (item) => item !== option,
-                                      ),
-                                    };
-                                  })
+                                checked={rubricDraft[entry.name] === option}
+                                onChange={() =>
+                                  setRubricDraft((current) => ({
+                                    ...current,
+                                    [entry.name]: option,
+                                  }))
                                 }
                                 disabled={!sheet.isEditable || saving}
                               />
                               <span>{option}</span>
                             </label>
                           ))}
+                          <button
+                            type="button"
+                            className="btn btn--ghost btn--sm"
+                            onClick={() =>
+                              setRubricDraft((current) => ({
+                                ...current,
+                                [entry.name]: null,
+                              }))
+                            }
+                            disabled={!sheet.isEditable || saving}
+                          >
+                            Clear
+                          </button>
                         </div>
                       </div>
                     );

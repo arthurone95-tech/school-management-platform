@@ -31,7 +31,7 @@ export interface GesSubjectScoreInput {
   readonly subjectName: string;
   readonly classScore: number | null;
   readonly examScore: number | null;
-  readonly rubrics: readonly ("VG" | "G" | "NH")[];
+  readonly rubric: "VG" | "G" | "NH" | null;
 }
 
 export interface GesScoreSubmitInput {
@@ -167,31 +167,21 @@ export function parseGesScoreSubmitInput(
       return { ok: false, message: validated.message };
     }
 
-    const rubrics: ("VG" | "G" | "NH")[] = [];
-    const rawRubrics = has(raw, "rubrics")
-      ? raw["rubrics"]
-      : has(raw, "rubric")
-        ? raw["rubric"]
-        : [];
-    const rubricValues = Array.isArray(rawRubrics)
-      ? rawRubrics
-      : rawRubrics === null
-        ? []
-        : [rawRubrics];
-    for (const value of rubricValues) {
-      if (value !== "VG" && value !== "G" && value !== "NH") {
+    let rubric: "VG" | "G" | "NH" | null = null;
+    if (has(raw, "rubrics") || has(raw, "rubric")) {
+      const rawRubric = has(raw, "rubrics") ? raw["rubrics"] : raw["rubric"];
+      const value = Array.isArray(rawRubric) ? rawRubric[0] : rawRubric;
+      if (value !== null && value !== "VG" && value !== "G" && value !== "NH") {
         return { ok: false, message: "Invalid qualitative rating." };
       }
-      if (!rubrics.includes(value)) {
-        rubrics.push(value);
-      }
+      rubric = (value as "VG" | "G" | "NH" | null) ?? null;
     }
 
     scores.push({
       subjectName,
       classScore: validated.classScore,
       examScore: validated.examScore,
-      rubrics,
+      rubric,
     });
   }
 
