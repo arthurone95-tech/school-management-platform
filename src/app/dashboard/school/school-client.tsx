@@ -246,7 +246,7 @@ export function SchoolClient({
 
     const supabase = createSupabaseBrowserClient();
     const extension = file.name.split(".").pop()?.toLowerCase() || "png";
-    const path = `${profile.id}/logo/${Date.now()}.${extension}`;
+    const path = `${profile.id}/logo/${Math.random().toString(36).slice(2)}.${extension}`;
 
     const { error: uploadError } = await supabase.storage
       .from("school-assets")
@@ -260,8 +260,27 @@ export function SchoolClient({
 
     const { data } = supabase.storage.from("school-assets").getPublicUrl(path);
     setLogoUrlDraft(data.publicUrl);
+
+    // Persist the logo URL to the database immediately so it survives
+    // page refreshes without requiring a separate "Save profile" click.
+    const saveResult = await postJson("/api/staff/school/update", {
+      name: nameDraft,
+      physicalAddress: physicalAddressDraft,
+      primaryPhone: primaryPhoneDraft,
+      secondaryPhone: secondaryPhoneDraft,
+      officialEmail: officialEmailDraft,
+      website: websiteDraft,
+      logoUrl: data.publicUrl,
+    });
+
     setUploadingLogo(false);
-    setProfileNotice("Logo uploaded. Save the profile to keep it.");
+
+    if (!saveResult.ok) {
+      setProfileError(saveResult.message);
+      return;
+    }
+
+    setProfileNotice("Logo uploaded and saved.");
   }
 
   async function handleCreateYear(event: FormEvent<HTMLFormElement>) {
