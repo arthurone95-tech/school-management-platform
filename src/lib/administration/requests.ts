@@ -408,6 +408,7 @@ export function parseTermUpdateInput(
 export interface SubjectCreateInput {
   readonly name: string;
   readonly code: string | null;
+  readonly is_compulsory: boolean;
 }
 
 export function parseSubjectCreateInput(
@@ -432,13 +433,15 @@ export function parseSubjectCreateInput(
     return codeResult;
   }
 
-  return { ok: true, value: { name, code: codeResult.value } };
+  const is_compulsory = body["is_compulsory"] === true;
+  return { ok: true, value: { name, code: codeResult.value, is_compulsory } };
 }
 
 export interface SubjectUpdateInput {
   readonly subjectId: string;
   readonly name?: string;
   readonly code?: string | null;
+  readonly is_compulsory?: boolean;
   readonly isActive?: boolean;
 }
 
@@ -458,6 +461,7 @@ export function parseSubjectUpdateInput(
     subjectId: string;
     name?: string;
     code?: string | null;
+    is_compulsory?: boolean;
     isActive?: boolean;
   } = { subjectId: id.value };
 
@@ -479,6 +483,14 @@ export function parseSubjectUpdateInput(
       return codeResult;
     }
     value.code = codeResult.value;
+  }
+
+  if (has(body, "is_compulsory")) {
+    const raw = body["is_compulsory"];
+    if (typeof raw !== "boolean") {
+      return { ok: false, message: "Invalid request body." };
+    }
+    value.is_compulsory = raw;
   }
 
   if (has(body, "isActive")) {

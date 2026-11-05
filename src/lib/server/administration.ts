@@ -558,6 +558,7 @@ interface SubjectRow {
   readonly name: string;
   readonly code: string | null;
   readonly is_active: boolean;
+  readonly is_compulsory: boolean;
 }
 
 function toSubject(row: SubjectRow): SubjectSummary {
@@ -566,6 +567,7 @@ function toSubject(row: SubjectRow): SubjectSummary {
     name: row.name,
     code: row.code,
     isActive: row.is_active,
+    is_compulsory: row.is_compulsory,
   };
 }
 
@@ -575,7 +577,7 @@ export async function listSubjects(
 ): Promise<SubjectSummary[] | null> {
   const { data, error } = await supabase
     .from("subjects")
-    .select("id, name, code, is_active")
+    .select("id, name, code, is_active, is_compulsory")
     .eq("school_id", schoolId)
     .order("name", { ascending: true });
 

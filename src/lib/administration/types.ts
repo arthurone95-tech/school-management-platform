@@ -48,6 +48,7 @@ export interface SubjectSummary {
   readonly name: string;
   readonly code: string | null;
   readonly isActive: boolean;
+  readonly is_compulsory: boolean;
 }
 
 export interface ClassOption {
