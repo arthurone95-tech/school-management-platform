@@ -1159,3 +1159,22 @@ body.sidebar-collapsed .app-main {
   gap: 0.25rem;
   font-size: 0.875rem;
 }
+
+/* ---------- Native date/time pickers ---------- */
+
+.field__input[type="date"],
+.field__input[type="time"],
+.field__input[type="datetime-local"] {
+  appearance: auto;
+  -webkit-appearance: auto;
+  color-scheme: light dark;
+  min-width: 0;
+}
+
+/* Ensure the calendar/time icon is visible */
+.field__input[type="date"]::-webkit-calendar-picker-indicator,
+.field__input[type="time"]::-webkit-calendar-picker-indicator,
+.field__input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 1;
+}

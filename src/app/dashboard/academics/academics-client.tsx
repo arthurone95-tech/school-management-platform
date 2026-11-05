@@ -238,8 +238,8 @@ function AcademicYearsTab({
           <CardBody>
             <form className="inline-form" onSubmit={handleCreateYear} noValidate>
               <TextField label="Name" value={yearName} onChange={(e) => setYearName(e.target.value)} required />
-              <TextField label="Starts" type="date" value={yearStart} onChange={(e) => setYearStart(e.target.value)} required />
-              <TextField label="Ends" type="date" value={yearEnd} onChange={(e) => setYearEnd(e.target.value)} required />
+              <TextField label="Starts" type="datetime-local" value={yearStart} onChange={(e) => setYearStart(e.target.value.slice(0, 10))} required />
+              <TextField label="Ends" type="datetime-local" value={yearEnd} onChange={(e) => setYearEnd(e.target.value.slice(0, 10))} required />
               <Button type="submit" loading={creating}>Create</Button>
             </form>
           </CardBody>
@@ -447,8 +447,8 @@ function ExaminationsTab({
                 ]}
               />
               <TextField label="Name" value={scheduleName} onChange={(e) => setScheduleName(e.target.value)} required />
-              <TextField label="Starts" type="date" value={scheduleStart} onChange={(e) => setScheduleStart(e.target.value)} required />
-              <TextField label="Ends" type="date" value={scheduleEnd} onChange={(e) => setScheduleEnd(e.target.value)} required />
+              <TextField label="Starts" type="datetime-local" value={scheduleStart} onChange={(e) => setScheduleStart(e.target.value.slice(0, 10))} required />
+              <TextField label="Ends" type="datetime-local" value={scheduleEnd} onChange={(e) => setScheduleEnd(e.target.value.slice(0, 10))} required />
               <Button type="submit" loading={creating}>Create</Button>
             </form>
           </CardBody>
