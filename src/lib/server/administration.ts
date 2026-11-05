@@ -170,6 +170,12 @@ interface TermRow {
   readonly name: string;
   readonly starts_on: string;
   readonly ends_on: string;
+  readonly is_current: boolean;
+  readonly status: string;
+  readonly vacation_start: string | null;
+  readonly vacation_end: string | null;
+  readonly exam_start: string | null;
+  readonly exam_end: string | null;
 }
 interface AcademicYearRow {
   readonly id: string;
@@ -177,6 +183,8 @@ interface AcademicYearRow {
   readonly starts_on: string;
   readonly ends_on: string;
   readonly is_current: boolean;
+  readonly status: string;
+  readonly is_active: boolean;
   readonly terms: TermRow[] | null;
 }
 
@@ -186,6 +194,12 @@ function toTerm(row: TermRow): TermSummary {
     name: row.name,
     startsOn: row.starts_on,
     endsOn: row.ends_on,
+    isCurrent: row.is_current,
+    status: row.status,
+    vacationStart: row.vacation_start,
+    vacationEnd: row.vacation_end,
+    examStart: row.exam_start,
+    examEnd: row.exam_end,
   };
 }
 
@@ -200,6 +214,8 @@ function toAcademicYear(row: AcademicYearRow): AcademicYearSummary {
     startsOn: row.starts_on,
     endsOn: row.ends_on,
     isCurrent: row.is_current,
+    status: row.status,
+    isActive: row.is_active,
     terms,
   };
 }
@@ -212,7 +228,7 @@ export async function listAcademicYears(
   const { data, error } = await supabase
     .from("academic_years")
     .select(
-      "id, name, starts_on, ends_on, is_current, terms ( id, name, starts_on, ends_on )",
+      "id, name, starts_on, ends_on, is_current, status, is_active, terms ( id, name, starts_on, ends_on, is_current, status, vacation_start, vacation_end, exam_start, exam_end )",
     )
     .eq("school_id", schoolId)
     .order("starts_on", { ascending: false });
@@ -262,7 +278,7 @@ export async function createAcademicYear(input: {
       starts_on: input.startsOn,
       ends_on: input.endsOn,
     })
-    .select("id, name, starts_on, ends_on, is_current")
+    .select("id, name, starts_on, ends_on, is_current, status, is_active")
     .maybeSingle();
 
   if (error || !data) {
@@ -287,6 +303,7 @@ export async function updateAcademicYear(input: {
   readonly startsOn?: string;
   readonly endsOn?: string;
   readonly isCurrent?: boolean;
+  readonly status?: string;
 }): Promise<AcademicYearResult> {
   const { supabase, schoolId, academicYearId } = input;
 
@@ -308,11 +325,32 @@ export async function updateAcademicYear(input: {
     }
   }
 
+  // When activating, also set status to ACTIVE and deactivate other active years
+  if (input.status === "ACTIVE") {
+    const { error: clearError } = await supabase
+      .from("academic_years")
+      .update({ status: "UPCOMING", is_active: false })
+      .eq("school_id", schoolId)
+      .eq("status", "ACTIVE")
+      .neq("id", academicYearId);
+    if (clearError) {
+      return {
+        ok: false,
+        reason: "other",
+        message: "The academic year could not be updated.",
+      };
+    }
+  }
+
   const patch: Record<string, unknown> = {};
   if (input.name !== undefined) patch.name = input.name;
   if (input.startsOn !== undefined) patch.starts_on = input.startsOn;
   if (input.endsOn !== undefined) patch.ends_on = input.endsOn;
   if (input.isCurrent !== undefined) patch.is_current = input.isCurrent;
+  if (input.status !== undefined) {
+    patch.status = input.status;
+    patch.is_active = input.status === "ACTIVE";
+  }
 
   const { data, error } = await supabase
     .from("academic_years")
@@ -320,7 +358,7 @@ export async function updateAcademicYear(input: {
     .eq("id", academicYearId)
     .eq("school_id", schoolId)
     .select(
-      "id, name, starts_on, ends_on, is_current, terms ( id, name, starts_on, ends_on )",
+      "id, name, starts_on, ends_on, is_current, status, is_active, terms ( id, name, starts_on, ends_on, is_current, status, vacation_start, vacation_end, exam_start, exam_end )",
     )
     .maybeSingle();
 
@@ -367,7 +405,7 @@ export async function createTerm(input: {
       starts_on: input.startsOn,
       ends_on: input.endsOn,
     })
-    .select("id, name, starts_on, ends_on")
+    .select("id, name, starts_on, ends_on, is_current, status, vacation_start, vacation_end, exam_start, exam_end")
     .maybeSingle();
 
   if (error || !data) {
@@ -384,18 +422,70 @@ export async function updateTerm(input: {
   readonly name?: string;
   readonly startsOn?: string;
   readonly endsOn?: string;
+  readonly isCurrent?: boolean;
+  readonly status?: string;
+  readonly vacationStart?: string | null;
+  readonly vacationEnd?: string | null;
+  readonly examStart?: string | null;
+  readonly examEnd?: string | null;
 }): Promise<TermResult> {
+  const { supabase, schoolId, termId } = input;
+
+  // At most one current term per school. Clear previous first.
+  if (input.isCurrent === true) {
+    const { error: clearError } = await supabase
+      .from("terms")
+      .update({ is_current: false })
+      .eq("school_id", schoolId)
+      .eq("is_current", true)
+      .neq("id", termId);
+    if (clearError) {
+      return {
+        ok: false,
+        reason: "other",
+        message: "The term could not be updated.",
+      };
+    }
+  }
+
+  // When activating, deactivate other active terms
+  if (input.status === "ACTIVE") {
+    const { error: clearError } = await supabase
+      .from("terms")
+      .update({ status: "UPCOMING", is_current: false })
+      .eq("school_id", schoolId)
+      .eq("status", "ACTIVE")
+      .neq("id", termId);
+    if (clearError) {
+      return {
+        ok: false,
+        reason: "other",
+        message: "The term could not be updated.",
+      };
+    }
+  }
+
   const patch: Record<string, unknown> = {};
   if (input.name !== undefined) patch.name = input.name;
   if (input.startsOn !== undefined) patch.starts_on = input.startsOn;
   if (input.endsOn !== undefined) patch.ends_on = input.endsOn;
+  if (input.isCurrent !== undefined) patch.is_current = input.isCurrent;
+  if (input.status !== undefined) {
+    patch.status = input.status;
+    if (input.status === "ACTIVE") patch.is_current = true;
+    if (input.status === "CLOSED") patch.is_current = false;
+  }
+  if (input.vacationStart !== undefined) patch.vacation_start = input.vacationStart;
+  if (input.vacationEnd !== undefined) patch.vacation_end = input.vacationEnd;
+  if (input.examStart !== undefined) patch.exam_start = input.examStart;
+  if (input.examEnd !== undefined) patch.exam_end = input.examEnd;
 
-  const { data, error } = await input.supabase
+  const { data, error } = await supabase
     .from("terms")
     .update(patch)
-    .eq("id", input.termId)
-    .eq("school_id", input.schoolId)
-    .select("id, name, starts_on, ends_on")
+    .eq("id", termId)
+    .eq("school_id", schoolId)
+    .select("id, name, starts_on, ends_on, is_current, status, vacation_start, vacation_end, exam_start, exam_end")
     .maybeSingle();
 
   if (error) {
@@ -410,6 +500,53 @@ export async function updateTerm(input: {
     };
   }
   return { ok: true, term: toTerm(data as TermRow) };
+}
+
+// ---------------------------------------------------------------------------
+// Closed-period lock check
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns true when the given term is CLOSED, meaning no mutations should be
+ * allowed on assessment results or attendance for that period.
+ */
+export async function isTermClosed(
+  supabase: ServerClient,
+  schoolId: string,
+  termId: string | null,
+): Promise<boolean> {
+  if (termId === null) {
+    return false;
+  }
+  const { data } = await supabase
+    .from("terms")
+    .select("status")
+    .eq("id", termId)
+    .eq("school_id", schoolId)
+    .maybeSingle<{ status: string }>();
+
+  return data?.status === "CLOSED";
+}
+
+/**
+ * Returns true when the given academic year is CLOSED.
+ */
+export async function isAcademicYearClosed(
+  supabase: ServerClient,
+  schoolId: string,
+  academicYearId: string | null,
+): Promise<boolean> {
+  if (academicYearId === null) {
+    return false;
+  }
+  const { data } = await supabase
+    .from("academic_years")
+    .select("status")
+    .eq("id", academicYearId)
+    .eq("school_id", schoolId)
+    .maybeSingle<{ status: string }>();
+
+  return data?.status === "CLOSED";
 }
 
 // ---------------------------------------------------------------------------

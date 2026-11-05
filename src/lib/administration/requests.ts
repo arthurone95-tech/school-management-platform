@@ -634,3 +634,241 @@ function readNullableId(
   }
   return raw.trim();
 }
+
+// ---------------------------------------------------------------------------
+// Academic events
+// ---------------------------------------------------------------------------
+
+export function parseAcademicEventCreateInput(
+  body: unknown,
+): ParseResult<{
+  termId: string | null;
+  title: string;
+  description: string | null;
+  eventType: string;
+  startsOn: string;
+  endsOn: string;
+}> {
+  if (!isRecord(body)) {
+    return { ok: false, message: "Invalid request body." };
+  }
+
+  const termRaw = body["termId"];
+  const termId =
+    termRaw === null || termRaw === undefined
+      ? null
+      : typeof termRaw === "string" && UUID_PATTERN.test(termRaw.trim())
+        ? termRaw.trim()
+        : null;
+  if (termRaw !== null && termRaw !== undefined && termId === null) {
+    return { ok: false, message: "Invalid term." };
+  }
+
+  const titleRaw = readString(body, "title");
+  const title = titleRaw === null ? null : titleRaw.trim();
+  if (title === null || title.length < 1 || title.length > 120) {
+    return { ok: false, message: "Enter an event title of 1 to 120 characters." };
+  }
+
+  function optText(key: string, max: number): string | null {
+    const rawValue = readString(body as Record<string, unknown>, key);
+    if (rawValue === null) return null;
+    const trimmed = rawValue.trim();
+    if (trimmed.length === 0 || trimmed.length > max) return null;
+    return trimmed;
+  }
+
+  const description = optText("description", 500);
+
+  const eventType = readString(body, "eventType") ?? "GENERAL";
+  if (
+    !["GENERAL", "HOLIDAY", "EXAM", "MEETING", "SPORTS", "CULTURAL", "OTHER"].includes(
+      eventType,
+    )
+  ) {
+    return { ok: false, message: "Invalid event type." };
+  }
+
+  const startsOn = readString(body, "startsOn");
+  const endsOn = readString(body, "endsOn");
+  if (startsOn === null || !isIsoDate(startsOn)) {
+    return { ok: false, message: "Enter a valid start date." };
+  }
+  if (endsOn === null || !isIsoDate(endsOn)) {
+    return { ok: false, message: "Enter a valid end date." };
+  }
+  if (startsOn > endsOn) {
+    return { ok: false, message: "End date must be on or after start date." };
+  }
+
+  return {
+    ok: true,
+    value: { termId, title, description, eventType, startsOn, endsOn },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Exam schedules
+// ---------------------------------------------------------------------------
+
+export function parseExamScheduleCreateInput(
+  body: unknown,
+): ParseResult<{
+  termId: string;
+  name: string;
+  startsOn: string;
+  endsOn: string;
+}> {
+  if (!isRecord(body)) {
+    return { ok: false, message: "Invalid request body." };
+  }
+
+  const termIdRaw = readString(body, "termId");
+  if (termIdRaw === null || !UUID_PATTERN.test(termIdRaw.trim())) {
+    return { ok: false, message: "Choose a term." };
+  }
+
+  const nameRaw = readString(body, "name");
+  const name = nameRaw === null ? null : nameRaw.trim();
+  if (name === null || name.length < 1 || name.length > 120) {
+    return { ok: false, message: "Enter an exam schedule name of 1 to 120 characters." };
+  }
+
+  const startsOn = readString(body, "startsOn");
+  const endsOn = readString(body, "endsOn");
+  if (startsOn === null || !isIsoDate(startsOn)) {
+    return { ok: false, message: "Enter a valid start date." };
+  }
+  if (endsOn === null || !isIsoDate(endsOn)) {
+    return { ok: false, message: "Enter a valid end date." };
+  }
+  if (startsOn > endsOn) {
+    return { ok: false, message: "End date must be on or after start date." };
+  }
+
+  return {
+    ok: true,
+    value: { termId: termIdRaw.trim(), name, startsOn, endsOn },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Exam timetable slots
+// ---------------------------------------------------------------------------
+
+export function parseExamTimetableSlotCreateInput(
+  body: unknown,
+): ParseResult<{
+  examScheduleId: string;
+  subjectId: string;
+  classId: string;
+  examDate: string;
+  startTime: string;
+  endTime: string;
+  roomName: string | null;
+  supervisorId: string | null;
+}> {
+  if (!isRecord(body)) {
+    return { ok: false, message: "Invalid request body." };
+  }
+
+  const examScheduleIdRaw = readString(body, "examScheduleId");
+  if (examScheduleIdRaw === null || !UUID_PATTERN.test(examScheduleIdRaw.trim())) {
+    return { ok: false, message: "Choose an exam schedule." };
+  }
+
+  const subjectIdRaw = readString(body, "subjectId");
+  if (subjectIdRaw === null || !UUID_PATTERN.test(subjectIdRaw.trim())) {
+    return { ok: false, message: "Choose a subject." };
+  }
+
+  const classIdRaw = readString(body, "classId");
+  if (classIdRaw === null || !UUID_PATTERN.test(classIdRaw.trim())) {
+    return { ok: false, message: "Choose a class." };
+  }
+
+  const examDate = readString(body, "examDate");
+  if (examDate === null || !isIsoDate(examDate)) {
+    return { ok: false, message: "Enter a valid exam date." };
+  }
+
+  const startTime = readString(body, "startTime");
+  const endTime = readString(body, "endTime");
+  if (startTime === null || !/^\d{2}:\d{2}$/.test(startTime)) {
+    return { ok: false, message: "Enter a valid start time (HH:MM)." };
+  }
+  if (endTime === null || !/^\d{2}:\d{2}$/.test(endTime)) {
+    return { ok: false, message: "Enter a valid end time (HH:MM)." };
+  }
+  if (startTime >= endTime) {
+    return { ok: false, message: "End time must be after start time." };
+  }
+
+  function optText(key: string, max: number): string | null {
+    const rawValue = readString(body as Record<string, unknown>, key);
+    if (rawValue === null) return null;
+    const trimmed = rawValue.trim();
+    if (trimmed.length === 0 || trimmed.length > max) return null;
+    return trimmed;
+  }
+
+  const roomName = optText("roomName", 80);
+
+  const supervisorIdRaw = body["supervisorId"];
+  const supervisorId =
+    supervisorIdRaw === null || supervisorIdRaw === undefined
+      ? null
+      : typeof supervisorIdRaw === "string" && UUID_PATTERN.test(supervisorIdRaw.trim())
+        ? supervisorIdRaw.trim()
+        : null;
+  if (supervisorIdRaw !== null && supervisorIdRaw !== undefined && supervisorId === null) {
+    return { ok: false, message: "Invalid supervisor." };
+  }
+
+  return {
+    ok: true,
+    value: {
+      examScheduleId: examScheduleIdRaw.trim(),
+      subjectId: subjectIdRaw.trim(),
+      classId: classIdRaw.trim(),
+      examDate,
+      startTime,
+      endTime,
+      roomName,
+      supervisorId,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Term/year status transition
+// ---------------------------------------------------------------------------
+
+export function parseStatusTransitionInput(
+  body: unknown,
+): ParseResult<{ id: string; status: string; entityType: "year" | "term" }> {
+  if (!isRecord(body)) {
+    return { ok: false, message: "Invalid request body." };
+  }
+
+  const entityType = readString(body, "entityType");
+  if (entityType !== "year" && entityType !== "term") {
+    return { ok: false, message: "Invalid entity type." };
+  }
+
+  const idRaw = readString(body, "id");
+  if (idRaw === null || !UUID_PATTERN.test(idRaw.trim())) {
+    return { ok: false, message: "Invalid ID." };
+  }
+
+  const status = readString(body, "status");
+  const validStatuses = ["UPCOMING", "ACTIVE", "CLOSED"];
+  if (status === null || !validStatuses.includes(status)) {
+    return { ok: false, message: "Invalid status." };
+  }
+
+  return {
+    ok: true,
+    value: { id: idRaw.trim(), status, entityType },
+  };
+}

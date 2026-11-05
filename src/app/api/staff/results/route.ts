@@ -86,6 +86,21 @@ export async function POST(request: Request): Promise<NextResponse> {
     return json({ ok: false, error: parsed.message }, 400);
   }
 
+  // Closed-period lock: block mutations on closed terms.
+  const { isTermClosed } = await import("@/lib/server/administration");
+  const { data: assessmentRow } = await supabase
+    .from("assessments")
+    .select("term_id")
+    .eq("id", parsed.value.assessmentId)
+    .eq("school_id", access.schoolId)
+    .maybeSingle<{ term_id: string | null }>();
+  if (assessmentRow?.term_id && (await isTermClosed(supabase, access.schoolId, assessmentRow.term_id))) {
+    return json(
+      { ok: false, error: "This term is closed. Score edits are not allowed." },
+      403,
+    );
+  }
+
   const result = await submitResultSheet({
     supabase,
     schoolId: access.schoolId,
