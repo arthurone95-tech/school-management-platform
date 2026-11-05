@@ -35,6 +35,16 @@ interface ExamSchedule {
   readonly status: string;
 }
 
+interface ExamSlot {
+  readonly id: string;
+  readonly subjectName: string | null;
+  readonly className: string | null;
+  readonly examDate: string;
+  readonly startTime: string;
+  readonly endTime: string;
+  readonly roomName: string | null;
+}
+
 type PostResult = { readonly ok: true } | { readonly ok: false; readonly message: string };
 
 async function postJson(url: string, body: unknown): Promise<PostResult> {
@@ -292,13 +302,27 @@ function ExaminationsTab({
   const [scheduleEnd, setScheduleEnd] = useState("");
   const [creating, setCreating] = useState(false);
 
+  const [classes, setClasses] = useState<{ id: string; name: string }[]>([]);
+  const [subjects, setSubjects] = useState<{ id: string; name: string }[]>([]);
+  const [slots, setSlots] = useState<ExamSlot[]>([]);
+  const [selectedScheduleId, setSelectedScheduleId] = useState("");
+  const [slotSubjectId, setSlotSubjectId] = useState("");
+  const [slotClassId, setSlotClassId] = useState("");
+  const [slotDate, setSlotDate] = useState("");
+  const [slotStart, setSlotStart] = useState("");
+  const [slotEnd, setSlotEnd] = useState("");
+  const [slotRoom, setSlotRoom] = useState("");
+  const [creatingSlot, setCreatingSlot] = useState(false);
+
   useEffect(() => {
     if (!canRead) return;
     let cancelled = false;
     void (async () => {
-      const [schedResult, yearsResult] = await Promise.all([
+      const [schedResult, yearsResult, classesResult, subjectsResult] = await Promise.all([
         getJson("/api/staff/exam-schedules", (p) => (p["schedules"] as ExamSchedule[]) ?? null),
         getJson("/api/staff/academic-years", (p) => (p["academicYears"] as AcademicYear[]) ?? null),
+        getJson("/api/staff/classes", (p) => (p["classes"] as { id: string; name: string }[]) ?? null),
+        getJson("/api/staff/subjects", (p) => (p["subjects"] as { id: string; name: string }[]) ?? null),
       ]);
       if (cancelled) return;
       if (schedResult.ok) setSchedules(schedResult.value);
@@ -312,6 +336,8 @@ function ExaminationsTab({
         }
         setTerms(allTerms);
       }
+      if (classesResult.ok) setClasses(classesResult.value ?? []);
+      if (subjectsResult.ok) setSubjects(subjectsResult.value ?? []);
     })();
     return () => {
       cancelled = true;
@@ -356,6 +382,42 @@ function ExaminationsTab({
     setNotice("Exam schedule published.");
     const refresh = await getJson("/api/staff/exam-schedules", (p) => (p["schedules"] as ExamSchedule[]) ?? null);
     if (refresh.ok) setSchedules(refresh.value);
+  }
+
+  async function loadSlots(scheduleId: string) {
+    const result = await getJson(`/api/staff/exam-timetable-slots?scheduleId=${scheduleId}`, (p) => (p["slots"] as ExamSlot[]) ?? null);
+    if (result.ok) setSlots(result.value);
+  }
+
+  async function handleCreateSlot(e: FormEvent) {
+    e.preventDefault();
+    if (!canManage || !selectedScheduleId) return;
+    setError(null);
+    setNotice(null);
+    setCreatingSlot(true);
+    const result = await postJson("/api/staff/exam-timetable-slots", {
+      examScheduleId: selectedScheduleId,
+      subjectId: slotSubjectId,
+      classId: slotClassId,
+      examDate: slotDate,
+      startTime: slotStart,
+      endTime: slotEnd,
+      roomName: slotRoom || null,
+      supervisorId: null,
+    });
+    setCreatingSlot(false);
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
+    setNotice("Timetable slot created.");
+    setSlotSubjectId("");
+    setSlotClassId("");
+    setSlotDate("");
+    setSlotStart("");
+    setSlotEnd("");
+    setSlotRoom("");
+    await loadSlots(selectedScheduleId);
   }
 
   if (!canRead) {
@@ -422,8 +484,73 @@ function ExaminationsTab({
               ))}
             </ul>
           )}
+
         </CardBody>
       </Card>
+
+      {canManage ? (
+        <Card>
+          <CardHeader title="Exam timetable slots" description="Add individual exam slots to a schedule." />
+          <CardBody>
+            <form className="inline-form" onSubmit={handleCreateSlot} noValidate>
+              <SelectField
+                label="Schedule"
+                value={selectedScheduleId}
+                onChange={(e) => {
+                  setSelectedScheduleId(e.target.value);
+                  if (e.target.value) loadSlots(e.target.value);
+                }}
+                options={[
+                  { value: "", label: "Choose a schedule" },
+                  ...(schedules ?? []).map((s) => ({ value: s.id, label: s.name })),
+                ]}
+              />
+              <SelectField
+                label="Subject"
+                value={slotSubjectId}
+                onChange={(e) => setSlotSubjectId(e.target.value)}
+                options={[
+                  { value: "", label: "Choose a subject" },
+                  ...subjects.map((s) => ({ value: s.id, label: s.name })),
+                ]}
+              />
+              <SelectField
+                label="Class"
+                value={slotClassId}
+                onChange={(e) => setSlotClassId(e.target.value)}
+                options={[
+                  { value: "", label: "Choose a class" },
+                  ...classes.map((c) => ({ value: c.id, label: c.name })),
+                ]}
+              />
+              <TextField label="Date" type="datetime-local" value={slotDate} onChange={(e) => setSlotDate(e.target.value.slice(0, 10))} required />
+              <TextField label="Start time" type="time" value={slotStart} onChange={(e) => setSlotStart(e.target.value)} required />
+              <TextField label="End time" type="time" value={slotEnd} onChange={(e) => setSlotEnd(e.target.value)} required />
+              <TextField label="Room" value={slotRoom} onChange={(e) => setSlotRoom(e.target.value)} />
+              <Button type="submit" loading={creatingSlot}>Add slot</Button>
+            </form>
+
+            {slots.length > 0 ? (
+              <ul className="record-list" style={{ marginTop: "1rem" }}>
+                {slots.map((slot) => (
+                  <li className="record" key={slot.id}>
+                    <div className="record__main">
+                      <p className="record__title">{slot.subjectName ?? "Subject"} — {slot.className ?? "Class"}</p>
+                      <p className="record__meta">
+                        <span>{slot.examDate}</span>
+                        <span>{slot.startTime} → {slot.endTime}</span>
+                        {slot.roomName ? <span>Room: {slot.roomName}</span> : null}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : selectedScheduleId ? (
+              <p className="muted" style={{ marginTop: "1rem" }}>No slots yet for this schedule.</p>
+            ) : null}
+          </CardBody>
+        </Card>
+      ) : null}
     </div>
   );
 }
