@@ -25,6 +25,7 @@ export async function GET(): Promise<NextResponse> {
     canViewAttendance,
     canViewResults,
     canViewData,
+    canViewAcademics,
   ] = await Promise.all([
     context.hasPermission("member.manage"),
     context.hasPermission("learner.read"),
@@ -43,6 +44,7 @@ export async function GET(): Promise<NextResponse> {
       (await context.hasPermission("learner.import")) ||
       (await context.hasPermission("learner.export")) ||
       (await context.hasPermission("report.export")))(),
+    context.hasPermission("academic.read"),
   ]);
 
   return json({
@@ -57,5 +59,6 @@ export async function GET(): Promise<NextResponse> {
     canViewAttendance,
     canViewResults,
     canViewData,
+    canViewAcademics,
   });
 }

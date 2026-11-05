@@ -7,6 +7,7 @@ import {
   BarChart3,
   BookOpen,
   CalendarCheck,
+  CalendarDays,
   GraduationCap,
   Inbox,
   LayoutDashboard,
@@ -34,6 +35,7 @@ export interface SidebarProps {
   readonly canViewAttendance: boolean;
   readonly canViewResults: boolean;
   readonly canViewData: boolean;
+  readonly canViewAcademics: boolean;
 }
 
 interface NavItem {
@@ -85,6 +87,7 @@ export function Sidebar(props: SidebarProps) {
     { href: "/dashboard/staff", label: "Staff", icon: Users, show: props.canManageMembers },
     { href: "/dashboard/attendance", label: "Attendance", icon: CalendarCheck, show: showAttendance },
     { href: "/dashboard/results", label: "Results", icon: BarChart3, show: props.canViewResults },
+    { href: "/dashboard/academics", label: "Academics", icon: CalendarDays, show: props.canViewAcademics },
     { href: "/dashboard/data", label: "Import / export", icon: Upload, show: props.canViewData },
     { href: "/dashboard/invitations", label: "Invitations", icon: Inbox, show: props.canManageMembers },
     { href: "/dashboard/school", label: "Settings", icon: Settings, show: props.canViewSettings },

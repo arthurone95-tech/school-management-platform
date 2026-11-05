@@ -24,6 +24,7 @@ export function SidebarLoader() {
           canViewAttendance: !!data.canViewAttendance,
           canViewResults: !!data.canViewResults,
           canViewData: !!data.canViewData,
+          canViewAcademics: !!data.canViewAcademics,
         });
       })
       .catch(() => {
