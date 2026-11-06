@@ -587,6 +587,125 @@ export async function listSubjects(
   return (data as SubjectRow[]).map(toSubject);
 }
 
+export async function listAssessmentComponents(
+  supabase: ServerClient,
+  schoolId: string,
+): Promise<AssessmentComponentSummary[] | null> {
+  const { data, error } = await supabase
+    .from("assessment_components")
+    .select("id, name, default_weight, description, is_active, created_at, updated_at")
+    .eq("school_id", schoolId)
+    .eq("is_active", true)
+    .order("name", { ascending: true });
+
+  if (error || !data) {
+    return null;
+  }
+  return (data as unknown as AssessmentComponentSummary[]);
+}
+
+export async function createAssessmentComponent(input: {
+  readonly supabase: ServerClient;
+  readonly schoolId: string;
+  readonly name: string;
+  readonly defaultWeight: number;
+  readonly description?: string;
+}): Promise<AssessmentComponentResult> {
+  const { data, error } = await input.supabase
+    .from("assessment_components")
+    .insert({
+      school_id: input.schoolId,
+      name: input.name,
+      default_weight: input.defaultWeight,
+      description: input.description,
+      is_active: true,
+    })
+    .select()
+    .maybeSingle();
+
+  if (error || !data) {
+    const reason = classify(error);
+    return { ok: false, reason, message: failureMessage(reason, "Assessment Component") };
+  }
+  return { ok: true, component: data as AssessmentComponentSummary };
+}
+
+export async function updateAssessmentComponent(input: {
+  readonly supabase: ServerClient;
+  readonly componentId: string;
+  readonly schoolId: string;
+  readonly name?: string;
+  readonly defaultWeight?: number;
+  readonly description?: string;
+  readonly isActive?: boolean;
+}): Promise<AssessmentComponentResult> {
+  const patch: Record<string, unknown> = {};
+  if (input.name !== undefined) patch.name = input.name;
+  if (input.defaultWeight !== undefined) patch.default_weight = input.defaultWeight;
+  if (input.description !== undefined) patch.description = input.description;
+  if (input.isActive !== undefined) patch.is_active = input.isActive;
+
+  const { data, error } = await input.supabase
+    .from("assessment_components")
+    .update(patch)
+    .eq("id", input.componentId)
+    .eq("school_id", input.schoolId)
+    .select()
+    .maybeSingle();
+
+  if (error) {
+    const reason = classify(error);
+    return { ok: false, reason, message: failureMessage(reason, "Assessment Component") };
+  }
+  if (!data) {
+    return { ok: false, reason: "not_found", message: "Assessment component not found." };
+  }
+  return { ok: true, component: data as AssessmentComponentSummary };
+}
+
+export async function deleteAssessmentComponent(input: {
+  readonly supabase: ServerClient;
+  readonly componentId: string;
+  readonly schoolId: string;
+}): Promise<AssessmentComponentResult> {
+  const { data, error } = await input.supabase
+    .from("assessment_components")
+    .delete()
+    .eq("id", input.componentId)
+    .eq("school_id", input.schoolId)
+    .select()
+    .maybeSingle();
+
+  if (error) {
+    const reason = classify(error);
+    return { ok: false, reason, message: failureMessage(reason, "Assessment Component") };
+  }
+  if (!data) {
+    return { ok: false, reason: "not_found", message: "Assessment component not found." };
+  }
+  return { ok: true, component: data as AssessmentComponentSummary };
+}
+
+/** Assessment component view types. */
+export interface AssessmentComponentSummary {
+  readonly id: string;
+  readonly schoolId: string;
+  readonly name: string;
+  readonly defaultWeight: number;
+  readonly description?: string | null;
+  readonly isActive: boolean;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export type AssessmentComponentResult =
+  | { readonly ok: true; readonly component: AssessmentComponentSummary }
+  | {
+      readonly ok: false;
+      readonly reason: "not_found" | "duplicate" | "invalid" | "other";
+      readonly message: string;
+    };
+
 export type SubjectResult =
   | { readonly ok: true; readonly subject: SubjectSummary }
   | {
