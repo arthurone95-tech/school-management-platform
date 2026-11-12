@@ -1160,6 +1160,80 @@ body.sidebar-collapsed .app-main {
   font-size: 0.875rem;
 }
 
+/* ---------- Landing and public pages ---------- */
+
+.site-header {
+  border-color: var(--border);
+  background: var(--surface);
+}
+
+.hero {
+  padding: 12rem 0 8rem;
+  text-align: center;
+}
+
+.hero__title {
+  font-size: 3rem;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--foreground);
+  margin-bottom: 1rem;
+}
+
+.hero__subtitle {
+  font-size: 1.25rem;
+  color: var(--muted-foreground);
+  margin-bottom: 2rem;
+  max-width: 44rem;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.feature-grid {
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+@media (min-width: 40rem) {
+  .feature-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.5rem;
+  }
+}
+
+.feature-card {
+  padding: 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  transition: background var(--transition-fast);
+}
+
+.feature-card:hover {
+  background: var(--surface-muted);
+}
+
+.section {
+  padding: 8rem 0;
+}
+
+.section__title {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--foreground);
+  margin-bottom: 1rem;
+  text-align: center;
+}
+
+.footer {
+  margin-top: 3rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--border);
+  color: var(--muted-foreground);
+}
+
+/* End Landing and public pages */
+
 /* ---------- Native date/time pickers ---------- */
 
 .field__input[type="date"],

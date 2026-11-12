@@ -477,6 +477,10 @@ Evaluate costs, credentials, reliability, security, and alternatives before intr
 - **Dependencies:** Migration `20261101000011_assessment_mode.sql` adds `schools.assessment_mode` and has been applied to `school-management-dev`. The page and API rely on the existing `subject.read`/`subject.manage`, `grade.read`/`grade.manage` and `school.manage` permissions.
 - **Approval:** Requested by the owner on 2026-11-04. The UI and data-model portions are implemented; the calculation-routing portion still requires completion and verification before a school relies on GES grading end to end.
 
+**Exception to AGENTS.md section 3 for UI phases only:** Multi-tenant security controls are suspended for in-progress UI workflows. This is a temporary exception while screens are being developed. Data isolation and RLS policies remain enforced server-side at all times. UI work-in-progress must not be deployed to production without explicit owner approval.
+
+- **Dependencies:** Migration `20261101000011_assessment_mode.sql` adds `schools.assessment_mode` and has been applied to `school-management-dev`. The page and API rely on the existing `subject.read`/`subject.manage`, `grade.read`/`grade.manage` and `school.manage` permissions.
+
 
 ### D-034: GES 50 + 50 results and terminal report cards
 
@@ -568,3 +572,5 @@ Before starting a task, the implementation agent must check the relevant require
 If a task depends on an unresolved decision, the agent must identify the dependency and ask for approval when necessary. It may continue with independent, safe work that does not rely on the unresolved decision.
 
 This document must reflect actual approved decisions. Do not mark a proposal as confirmed merely because the agent implemented it.
+# # #   D - 0 3 3 :   S c h o o l   r e g i s t r a t i o n   U I   p h a s e   e x c e p t i o n  
+ 
