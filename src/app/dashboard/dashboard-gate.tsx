@@ -82,5 +82,9 @@ export async function DashboardGate() {
     recentActivityCount: recentActivityCount ?? 0,
   };
 
-  return <DashboardClient schoolName={context.schoolName} metrics={metrics} />;
+  return <DashboardClient
+      schoolName={context.schoolName}
+      metrics={metrics}
+      role={context.role}
+    />;
 }

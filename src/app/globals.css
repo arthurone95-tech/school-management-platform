@@ -1232,6 +1232,31 @@ body.sidebar-collapsed .app-main {
   color: var(--muted-foreground);
 }
 
+/* Dashboard specific classes */
+.dashboard-greeting {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.dashboard-card-value {
+  font-size: 2rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.dashboard-card-link {
+  text-decoration: none;
+  color: inherit;
+}
+
 /* End Landing and public pages */
 
 /* ---------- Native date/time pickers ---------- */
@@ -1251,4 +1276,417 @@ body.sidebar-collapsed .app-main {
 .field__input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   cursor: pointer;
   opacity: 1;
+}
+
+
+
+
+/* =========================================================================
+   Landing page (landing-*)
+   PASTE THIS AT THE VERY END OF globals.css. It does not edit or override
+   any existing rule. It only uses your existing variables (--surface,
+   --border, --primary, ...), so dark mode works automatically.
+   ========================================================================= */
+
+/* ---------- Width and spacing ---------- */
+
+/* Same width as your other pages (--container = 68rem) with side padding. */
+.landing-container {
+  width: 100%;
+  max-width: var(--container);
+  margin: 0 auto;
+  padding: 0 1.25rem;
+}
+
+/* Space above/below each section. scroll-margin-top keeps the sticky header
+   (3.5rem tall) from covering a heading when a nav link jumps to it. */
+.landing-section {
+  padding: 4rem 0;
+  scroll-margin-top: 3.5rem;
+}
+
+@media (min-width: 48rem) {
+  .landing-section {
+    padding: 5rem 0;
+  }
+}
+
+/* Tinted band for every second section. Cards (white) sit on top of it. */
+.landing-section--alt {
+  background: var(--surface-muted);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+/* ---------- Header ---------- */
+
+.landing-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.landing-header__inner {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  height: 3.5rem;
+}
+
+/* margin-right:auto pushes the nav and buttons to the right. */
+.landing-brand {
+  margin-right: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.landing-nav {
+  display: none;
+}
+
+.landing-nav ul {
+  display: flex;
+  gap: 1.5rem;
+  list-style: none;
+  font-size: 0.875rem;
+}
+
+.landing-nav a {
+  color: var(--muted-foreground);
+}
+
+.landing-nav a:hover {
+  color: var(--foreground);
+}
+
+.landing-header__actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Hides "Sign in" on very small phones only. */
+.landing-hide-sm {
+  display: none;
+}
+
+@media (min-width: 40rem) {
+  .landing-hide-sm {
+    display: block;
+  }
+}
+
+@media (min-width: 48rem) {
+  .landing-nav {
+    display: block;
+  }
+}
+
+/* ---------- Hero ---------- */
+
+.landing-hero {
+  padding: 4rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+/* One column on phones, two columns (text | preview) from 64rem. */
+.landing-hero__inner {
+  display: grid;
+  align-items: center;
+  gap: 3rem;
+}
+
+@media (min-width: 64rem) {
+  .landing-hero {
+    padding: 5rem 0;
+  }
+
+  .landing-hero__inner {
+    grid-template-columns: 1fr 1fr;
+    gap: 4rem;
+  }
+}
+
+.landing-title {
+  font-size: 2.5rem;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+@media (min-width: 48rem) {
+  .landing-title {
+    font-size: 3.25rem;
+  }
+}
+
+.landing-lead {
+  max-width: 32rem;
+  margin-top: 1.25rem;
+  font-size: 1.125rem;
+  color: var(--muted-foreground);
+}
+
+.landing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 2rem;
+}
+
+/* ---------- Hero preview (static sample dashboard) ---------- */
+
+.landing-preview {
+  padding: 1.25rem;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.landing-preview__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+/* Small rounded label, e.g. "Sample data" and "Coming soon". */
+.landing-pill {
+  display: inline-block;
+  padding: 0.125rem 0.625rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
+.landing-stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.landing-stat {
+  padding: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.landing-stat__value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.landing-stat__label {
+  margin-top: 0.25rem;
+  font-size: 0.875rem;
+  color: var(--muted-foreground);
+}
+
+.landing-stat--wide {
+  grid-column: 1 / -1;
+}
+
+.landing-stat__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 0.875rem;
+}
+
+/* Progress bar: the track is the tinted bar, the fill is a solid colour.
+   The fill's width is set in page.tsx (style={{ width: "94%" }}). */
+.landing-meter {
+  height: 0.5rem;
+  margin-top: 0.75rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
+.landing-meter__fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--primary);
+}
+
+/* ---------- Section text ---------- */
+
+.landing-heading {
+  font-size: 1.875rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+@media (min-width: 48rem) {
+  .landing-heading {
+    font-size: 2.25rem;
+  }
+}
+
+.landing-intro {
+  max-width: 40rem;
+  margin-top: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+.landing-subheading {
+  margin-top: 3.5rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+/* ---------- Grids ---------- */
+
+/* Base grid: one column. Add a modifier for more columns on wider screens. */
+.landing-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  margin-top: 2.5rem;
+}
+
+.landing-grid--tight {
+  margin-top: 1rem;
+}
+
+@media (min-width: 40rem) {
+  .landing-grid--2,
+  .landing-grid--3,
+  .landing-grid--4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 64rem) {
+  .landing-grid--3 {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .landing-grid--4 {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+/* ---------- Cards ---------- */
+
+.landing-card {
+  padding: 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+/* Dashed outline = not live yet. */
+.landing-card--soon {
+  background: transparent;
+  border-style: dashed;
+}
+
+.landing-card__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  margin-bottom: 1rem;
+  border-radius: var(--radius);
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
+.landing-card__icon svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.landing-card__title {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.landing-card__text {
+  margin-top: 0.25rem;
+  font-size: 0.875rem;
+  color: var(--muted-foreground);
+}
+
+/* "Coming soon" cards: icon on the left, text on the right. */
+.landing-soon {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.landing-soon .landing-card__icon {
+  flex-shrink: 0;
+  margin-bottom: 0;
+}
+
+.landing-soon__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* ---------- Steps ---------- */
+
+.landing-steps {
+  list-style: none;
+}
+
+.landing-step__number {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  margin-bottom: 1rem;
+  border-radius: 50%;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
+/* ---------- Closing section + footer ---------- */
+
+.landing-cta {
+  display: grid;
+  gap: 2.5rem;
+}
+
+@media (min-width: 64rem) {
+  .landing-cta {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.landing-contact__title {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.landing-contact p {
+  margin-top: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+.landing-footer {
+  padding: 1.5rem 0;
+  border-top: 1px solid var(--border);
+  font-size: 0.875rem;
+  color: var(--muted-foreground);
 }

@@ -1,4 +1,4 @@
-import { SidebarLoader } from "@/components/sidebar-loader";
+import { AdminSidebar } from "@/app/dashboard/admin/sidebar";
 
 export default function DashboardLayout({
   children,
@@ -7,7 +7,7 @@ export default function DashboardLayout({
 }) {
   return (
     <div className="app-shell">
-      <SidebarLoader />
+      <AdminSidebar />
       <main className="app-main">{children}</main>
     </div>
   );
