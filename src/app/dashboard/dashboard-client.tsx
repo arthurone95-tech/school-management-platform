@@ -3,7 +3,6 @@
 import Link from "next/link";
 
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
-import { TeacherSidebar } from "@/components/sidebar";
 
 export interface DashboardMetrics {
   readonly totalStudents: number;
@@ -36,8 +35,6 @@ export function DashboardClient({
             {schoolName ?? "Your school"} — your dashboard for taking attendance
             and entering marks.
           </p>
-
-          <TeacherSidebar />
 
           {/* Classes grid */}
           {metrics.totalClasses > 0 ? (

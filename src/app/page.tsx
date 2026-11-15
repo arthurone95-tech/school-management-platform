@@ -277,6 +277,14 @@ export default function HomePage() {
               </Link>
             </span>
             <a
+              href="/signup"
+              className="btn btn--primary btn--sm"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Signup
+            </a>
+            <a
               href={whatsappUrl}
               className="btn btn--primary btn--sm"
               target="_blank"
@@ -298,6 +306,14 @@ export default function HomePage() {
               easy-to-use system for attendance, grading and reporting.
             </p>
             <div className="landing-actions">
+              <a
+                href="/signup"
+                className="btn btn--primary"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Signup
+              </a>
               <a
                 href={whatsappUrl}
                 className="btn btn--primary"
