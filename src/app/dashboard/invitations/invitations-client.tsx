@@ -7,6 +7,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
+import { PageHeader } from "@/components/ui/page-header";
 import { SelectField, TextField } from "@/components/ui/form";
 import { InvitationStatusBadge } from "@/components/ui/status-badge";
 import type { InvitationStatus } from "@/lib/staff/invitation-status";
@@ -301,13 +302,10 @@ export function InvitationsClient({
   return (
     <>
       <div className="container stack">
-        <div className="stack stack--sm">
-          <h1>Staff invitations</h1>
-          <p className="muted">
-            Invite a colleague by creating a single-use activation link, then
-            share it with them directly. No email is sent.
-          </p>
-        </div>
+        <PageHeader
+          title="Staff invitations"
+          description="Invite a colleague by creating a single-use activation link, then share it with them directly. No email is sent."
+        />
 
         {!canManageMembers ? (
           <Alert variant="info">

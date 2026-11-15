@@ -7,6 +7,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
+import { PageHeader } from "@/components/ui/page-header";
 import { SelectField, TextField } from "@/components/ui/form";
 import {
   GENDERS,
@@ -570,15 +571,12 @@ export function LearnersClient({
   return (
     <>
       <div className="container stack">
-        <div className="stack stack--sm">
-          <h1>Students</h1>
-          <p className="muted">
-            Register a student and place them in a class. Registration numbers
-            are unique within your school.
-          </p>
-        </div>
+        <PageHeader
+          title="Students"
+          description="Register a student and place them in a class. Registration numbers are unique within your school."
+        />
 
-        {!canEnrol ? (
+      {!canEnrol ? (
           <Alert variant="info">
             Your role cannot enrol students yet. Only a school administrator can
             register a student.
@@ -754,7 +752,7 @@ export function LearnersClient({
               }
             />
             <CardBody className="stack stack--sm">
-              <div className="cluster" style={{ alignItems: "flex-end" }}>
+              <div className="cluster">
                 <TextField
                   label="Search students"
                   name="student-search"

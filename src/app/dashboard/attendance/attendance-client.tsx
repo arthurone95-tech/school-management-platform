@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
+import { PageHeader } from "@/components/ui/page-header";
 import { SelectField, TextField } from "@/components/ui/form";
 import {
   ATTENDANCE_STATUS_LABELS,
@@ -371,14 +372,11 @@ export function AttendanceClient({
   return (
     <>
       <div className="container stack">
-        <div className="stack stack--sm">
-          <h1>Attendance</h1>
-          <p className="muted">
-            Take a register for a class you are assigned to. You can change it
-            while the date is still today; ask an administrator for an earlier
-            one.
-          </p>
-        </div>
+        <PageHeader
+          title="Attendance"
+          description="Take a register for a class you are assigned to. You can change it while the date is still today; ask an administrator for an earlier one."
+        />
+
         {error ? <Alert variant="error">{error}</Alert> : null}
         {notice ? <Alert variant="success">{notice}</Alert> : null}
 
@@ -555,10 +553,7 @@ export function AttendanceClient({
                                 <p className="record__meta">
                                   {learner.registrationNumber}
                                 </p>
-                                <fieldset
-                                  className="stack--sm"
-                                  style={{ border: 0, margin: 0, padding: 0 }}
-                                >
+                                <fieldset className="stack--sm fieldset--plain">
                                   <legend className="visually-hidden">
                                     Attendance for {learner.fullName}
                                   </legend>

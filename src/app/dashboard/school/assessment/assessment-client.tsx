@@ -6,6 +6,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
+import { PageHeader } from "@/components/ui/page-header";
 import { TextField } from "@/components/ui/form";
 import { parseGradeBandCreateInput } from "@/lib/academics/requests";
 import type { GradeBandSummary } from "@/lib/academics/types";
@@ -338,19 +339,15 @@ export function AssessmentClient({
 
   return (
     <div className="container stack">
-      <div className="stack stack--sm">
-        <p style={{ margin: 0 }}>
+      <PageHeader
+        title="Custom assessment framework"
+        description="Configure the subjects and grade boundaries your school uses. These settings apply only to this school and only while Fully custom is the active assessment mode."
+        actions={
           <Link className="btn btn--ghost btn--sm" href="/dashboard/school">
             <span aria-hidden="true">←</span> Back to school settings
           </Link>
-        </p>
-        <h1>Custom assessment framework</h1>
-        <p className="muted">
-          Configure the subjects and grade boundaries your school uses. These
-          settings apply only to this school and only while Fully custom is the
-          active assessment mode.
-        </p>
-      </div>
+        }
+      />
 
       {modeError ? <Alert variant="error">{modeError}</Alert> : null}
 

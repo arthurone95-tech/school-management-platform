@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
+import { PageHeader } from "@/components/ui/page-header";
 import { SelectField, TextField } from "@/components/ui/form";
 import {
   parseAssessmentCreateInput,
@@ -452,14 +453,10 @@ export function ResultsClient({
   return (
     <>
       <div className="container stack">
-        <div className="stack stack--sm">
-          <h1>Results</h1>
-          <p className="muted">
-            Set an assessment for a class you are assigned to, then record the
-            marks. Grades come from your school&rsquo;s own grading bands, which
-            an administrator configures in Settings.
-          </p>
-        </div>
+        <PageHeader
+          title="Results"
+          description="Set an assessment for a class you are assigned to, then record the marks. Grades come from your school&rsquo;s own grading bands, which an administrator configures in Settings."
+        />
 
         {error ? <Alert variant="error">{error}</Alert> : null}
         {notice ? <Alert variant="success">{notice}</Alert> : null}

@@ -1463,6 +1463,46 @@ body.sidebar-collapsed .sidebar,
   font-weight: 600;
 }
 
+/* ---------- Small layout helpers (replaces inline styles) ---------- */
+
+.cluster--tight {
+  gap: 0.5rem;
+}
+
+.cluster--wide {
+  gap: 1rem;
+}
+
+.fieldset--plain {
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.list--spaced {
+  margin-top: 1rem;
+}
+
+.school-logo {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  border: 1px solid var(--border);
+}
+
+.school-logo-placeholder {
+  width: 72px;
+  height: 72px;
+  border: 1px dashed var(--border);
+  display: grid;
+  place-items: center;
+  color: var(--muted-foreground);
+}
+
+.input--hidden {
+  display: none;
+}
+
 /* =========================================================================
    Landing page (landing-*)
    PASTE THIS AT THE VERY END OF globals.css. It does not edit or override

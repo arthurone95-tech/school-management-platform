@@ -5,6 +5,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
+import { PageHeader } from "@/components/ui/page-header";
 import { TextField, SelectField } from "@/components/ui/form";
 
 const NETWORK_MESSAGE = "We could not reach the server. Check your connection and try again.";
@@ -99,13 +100,13 @@ export function AcademicsClient({
   return (
     <div className="container stack">
       <div className="stack stack--sm">
-        <h1>Academics</h1>
-        <p className="muted">
-          Manage academic years, terms, calendar events, and examination schedules.
-        </p>
+        <PageHeader
+          title="Academics"
+          description="Manage academic years, terms, calendar events, and examination schedules."
+        />
       </div>
 
-      <div className="cluster" style={{ gap: "0.5rem" }}>
+      <div className="cluster cluster--tight">
         <button
           type="button"
           className={tab === "years" ? "btn btn--primary btn--sm" : "btn btn--secondary btn--sm"}
@@ -531,7 +532,7 @@ function ExaminationsTab({
             </form>
 
             {slots.length > 0 ? (
-              <ul className="record-list" style={{ marginTop: "1rem" }}>
+              <ul className="record-list list--spaced">
                 {slots.map((slot) => (
                   <li className="record" key={slot.id}>
                     <div className="record__main">
@@ -546,7 +547,7 @@ function ExaminationsTab({
                 ))}
               </ul>
             ) : selectedScheduleId ? (
-              <p className="muted" style={{ marginTop: "1rem" }}>No slots yet for this schedule.</p>
+              <p className="muted list--spaced">No slots yet for this schedule.</p>
             ) : null}
           </CardBody>
         </Card>

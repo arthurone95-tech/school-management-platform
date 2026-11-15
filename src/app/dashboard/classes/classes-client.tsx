@@ -7,6 +7,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
+import { PageHeader } from "@/components/ui/page-header";
 import { TextField } from "@/components/ui/form";
 import {
   parseClassCreateInput,
@@ -235,16 +236,12 @@ export function ClassesClient({
   return (
     <>
       <div className="container stack">
-        <div className="stack stack--sm">
-          <h1>Classes</h1>
-          <p className="muted">
-            Classes belong to your school. A student is placed in one active
-            class at a time. Deactivating a class hides it from new enrolment
-            but keeps existing placements.
-          </p>
-        </div>
+        <PageHeader
+          title="Classes"
+          description="Classes belong to your school. A student is placed in one active class at a time. Deactivating a class hides it from new enrolment but keeps existing placements."
+        />
 
-        {!canRead ? (
+      {!canRead ? (
           <Alert variant="info">Your role cannot view classes yet.</Alert>
         ) : (
           <>

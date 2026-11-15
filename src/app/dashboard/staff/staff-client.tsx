@@ -7,6 +7,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
+import { PageHeader } from "@/components/ui/page-header";
 import { SelectField } from "@/components/ui/form";
 import {
   parseAssignmentCreateInput,
@@ -315,14 +316,10 @@ export function StaffClient({
   return (
     <>
       <div className="container stack">
-        <div className="stack stack--sm">
-          <h1>Staff</h1>
-          <p className="muted">
-            The staff in your school, their access and the classes and subjects
-            they are assigned to. Suspending or revoking a member removes access
-            immediately and is never a deletion.
-          </p>
-        </div>
+        <PageHeader
+          title="Staff"
+          description="The staff in your school, their access and the classes and subjects they are assigned to. Suspending or revoking a member removes access immediately and is never a deletion."
+        />
 
         {!canManageMembers ? (
           <Alert variant="info">

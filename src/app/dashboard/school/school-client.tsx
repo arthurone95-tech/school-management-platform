@@ -6,6 +6,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
+import { PageHeader } from "@/components/ui/page-header";
 import { TextField } from "@/components/ui/form";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { parseSchoolProfileUpdateInput } from "@/lib/administration/requests";
@@ -217,13 +218,10 @@ export function SchoolClient({
 
   return (
     <div className="container stack">
-      <div className="stack stack--sm">
-        <h1>School settings</h1>
-        <p className="muted">
-          Your school profile, branding, and assessment framework settings.
-          Academic calendars and examinations are managed under the Academics tab.
-        </p>
-      </div>
+      <PageHeader
+        title="School settings"
+        description="Your school profile, branding, and assessment framework settings. Academic calendars and examinations are managed under the Academics tab."
+      />
 
       {/* School profile */}
       {canManageSchool ? (
@@ -249,24 +247,15 @@ export function SchoolClient({
                 onSubmit={handleSaveProfile}
                 noValidate
               >
-                <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
+                <div className="cluster cluster--wide">
                   {logoPreview ? (
                     <img
                       src={logoPreview}
                       alt="School logo preview"
-                      style={{ width: 72, height: 72, objectFit: "contain", border: "1px solid var(--border)" }}
+                      className="school-logo"
                     />
                   ) : (
-                    <div
-                      style={{
-                        width: 72,
-                        height: 72,
-                        border: "1px dashed var(--border)",
-                        display: "grid",
-                        placeItems: "center",
-                        color: "var(--muted-foreground)",
-                      }}
-                    >
+                    <div className="school-logo-placeholder">
                       No logo
                     </div>
                   )}
@@ -277,7 +266,7 @@ export function SchoolClient({
                       accept="image/png,image/jpeg,image/webp"
                       onChange={handleLogoChange}
                       disabled={uploadingLogo}
-                      style={{ display: "none" }}
+                      className="input--hidden"
                     />
                   </label>
                   {logoPreview ? (

@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
+import { PageHeader } from "@/components/ui/page-header";
 import { SelectField } from "@/components/ui/form";
 import {
   IMPORT_TEMPLATE_EXAMPLE,
@@ -231,14 +232,10 @@ export function DataClient({
   return (
     <>
       <div className="container stack">
-        <div className="stack stack--sm">
-          <h1>Import and export</h1>
-          <p className="muted">
-            Bring in a class list you already hold, or take a copy of your data
-            out. Exports include children&rsquo;s personal data and are recorded
-            in the audit trail.
-          </p>
-        </div>
+        <PageHeader
+          title="Import and export"
+          description="Bring in a class list you already hold, or take a copy of your data out. Exports include children&rsquo;s personal data and are recorded in the audit trail."
+        />
 
         {error ? <Alert variant="error">{error}</Alert> : null}
         {notice ? <Alert variant="success">{notice}</Alert> : null}
