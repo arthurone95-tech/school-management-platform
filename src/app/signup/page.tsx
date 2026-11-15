@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { AuthShell } from "@/components/ui/auth-shell";
-
 import { SignupForm } from "./signup-form";
 
 export const metadata: Metadata = {
@@ -12,10 +11,18 @@ export const metadata: Metadata = {
 /**
  * School sign-up page.
  *
- * School self-service sign-up has no server-enforced, school-scoped creation
- * path yet (see the platform-owner note in `src/app/owner/page.tsx`), so the
- * form is presented for layout only and cannot be submitted. This page reads no
- * cookies and stays prerenderable.
+ * New schools use this page to create an account and get started with
+ * the School Management Platform. After signing up, schools receive a
+ * unique code and can invite staff and administrators.
+ *
+ * The form submits to the backend which creates:
+ *   1. A school row in the schools table
+ *   2. An administrator Auth account (verified, with password)
+ *   3. A school_members entry linking the user to the school
+ *   4. Default grade bands for the school
+ *
+ * On success the user is redirected to the sign-in page with the
+ * school code preserved in the query string.
  */
 export default function SignupPage() {
   return (
