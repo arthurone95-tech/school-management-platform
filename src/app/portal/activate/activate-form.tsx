@@ -3,7 +3,9 @@
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 
+import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { TextField } from "@/components/ui/form";
 
 interface PortalActivateResponse {
   readonly ok?: boolean;
@@ -68,78 +70,48 @@ export function ActivateForm() {
   }
 
   return (
-    <div className="stack">
-      <h1>Student activation</h1>
-      <p className="muted">
-        Enter your one-time activation code and choose a new password.
-      </p>
+    <form className="stack stack--sm" onSubmit={handleSubmit} noValidate>
+      {error ? <Alert variant="error">{error}</Alert> : null}
 
-      {error ? <p className="error mt-2">{error}</p> : null}
+      <TextField
+        label="Activation code"
+        name="code"
+        placeholder="e.g. ACT-12345-ABCDE"
+        required
+        value={code}
+        onChange={(event) => setCode(event.target.value)}
+      />
 
-      <form onSubmit={handleSubmit} className="card p-4 mt-4" noValidate>
-        <div className="grid gap-3">
-          <div>
-            <label className="label" htmlFor="activation-code">
-              Activation code
-            </label>
-            <input
-              id="activation-code"
-              type="text"
-              name="code"
-              className="input"
-              required
-              placeholder="e.g. ACT-12345-ABCDE"
-              value={code}
-              onChange={(event) => setCode(event.target.value)}
-            />
-          </div>
-          <div>
-            <label className="label" htmlFor="activation-new-password">
-              New password
-            </label>
-            <input
-              id="activation-new-password"
-              type="password"
-              name="newPassword"
-              className="input"
-              required
-              minLength={8}
-              maxLength={72}
-              autoComplete="new-password"
-              placeholder="minimum 8 characters"
-              value={newPassword}
-              onChange={(event) => setNewPassword(event.target.value)}
-            />
-          </div>
-          <div>
-            <label className="label" htmlFor="activation-confirm-password">
-              Confirm password
-            </label>
-            <input
-              id="activation-confirm-password"
-              type="password"
-              name="confirmPassword"
-              className="input"
-              required
-              minLength={8}
-              maxLength={72}
-              autoComplete="new-password"
-              placeholder="Confirm password"
-              value={confirmPassword}
-              onChange={(event) => setConfirmPassword(event.target.value)}
-            />
-          </div>
-        </div>
+      <TextField
+        label="New password"
+        name="newPassword"
+        type="password"
+        autoComplete="new-password"
+        minLength={8}
+        maxLength={72}
+        hint="At least 8 characters."
+        required
+        value={newPassword}
+        onChange={(event) => setNewPassword(event.target.value)}
+      />
 
-        <Button type="submit" loading={pending} className="w-100">
+      <TextField
+        label="Confirm password"
+        name="confirmPassword"
+        type="password"
+        autoComplete="new-password"
+        minLength={8}
+        maxLength={72}
+        required
+        value={confirmPassword}
+        onChange={(event) => setConfirmPassword(event.target.value)}
+      />
+
+      <div>
+        <Button type="submit" loading={pending}>
           {pending ? "Activating…" : "Activate"}
         </Button>
-      </form>
-
-      <p className="muted mt-3">
-        If you do not have an activation code, ask your teacher or administrator
-        to issue one.
-      </p>
-    </div>
+      </div>
+    </form>
   );
 }

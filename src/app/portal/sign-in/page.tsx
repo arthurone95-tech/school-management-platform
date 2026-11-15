@@ -1,4 +1,7 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+
+import { AuthShell } from "@/components/ui/auth-shell";
 
 import { PortalSignInForm } from "./sign-in-form";
 
@@ -14,5 +17,24 @@ export const metadata: Metadata = {
  * `/api/portal/sign-in`, not by this page, so the page stays prerenderable.
  */
 export default function PortalSignInPage() {
-  return <PortalSignInForm />;
+  return (
+    <AuthShell
+      brand="Student portal"
+      title="Student sign-in"
+      description="Enter your school code, username and password to sign in."
+      footer={
+        <>
+          <Link href="/portal/activate" className="link">
+            Activate your account
+          </Link>
+          {" · "}
+          <Link href="/sign-in" className="link">
+            Staff sign-in
+          </Link>
+        </>
+      }
+    >
+      <PortalSignInForm />
+    </AuthShell>
+  );
 }

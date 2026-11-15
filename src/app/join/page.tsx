@@ -1,4 +1,12 @@
+import type { Metadata } from "next";
+
+import { AuthShell } from "@/components/ui/auth-shell";
+
 import { JoinForm } from "./join-form";
+
+export const metadata: Metadata = {
+  title: "Accept your invitation | School Management Platform",
+};
 
 /**
  * Shareable staff invitation acceptance page (D-025).
@@ -8,9 +16,15 @@ import { JoinForm } from "./join-form";
  * log; the browser posts it to `/api/staff/invitations/*` in the request body.
  *
  * No session is required: possession of the single-use, expiring link is the
- * credential. The page holds no server state of its own, so it renders the
- * client form directly.
+ * credential. The shell is static; the client form owns the state.
  */
 export default function JoinPage() {
-  return <JoinForm />;
+  return (
+    <AuthShell
+      title="Accept your invitation"
+      description="Set a password to activate your staff account."
+    >
+      <JoinForm />
+    </AuthShell>
+  );
 }

@@ -1,4 +1,7 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+
+import { AuthShell } from "@/components/ui/auth-shell";
 
 import { ActivateForm } from "./activate-form";
 
@@ -13,5 +16,21 @@ export const metadata: Metadata = {
  * password is set by `/api/portal/activate`, not by this page.
  */
 export default function PortalActivatePage() {
-  return <ActivateForm />;
+  return (
+    <AuthShell
+      brand="Student portal"
+      title="Student activation"
+      description="Enter your one-time activation code and choose a password."
+      footer={
+        <>
+          Already activated?{" "}
+          <Link href="/portal/sign-in" className="link">
+            Sign in
+          </Link>
+        </>
+      }
+    >
+      <ActivateForm />
+    </AuthShell>
+  );
 }

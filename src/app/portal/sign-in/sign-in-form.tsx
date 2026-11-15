@@ -3,7 +3,9 @@
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 
+import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { TextField } from "@/components/ui/form";
 
 interface PortalSignInResponse {
   readonly ok?: boolean;
@@ -61,75 +63,44 @@ export function PortalSignInForm() {
   }
 
   return (
-    <div className="stack">
-      <h1>Student sign-in</h1>
-      <p className="muted">
-        Enter your school code, username and password to sign in to the student
-        portal.
-      </p>
+    <form className="stack stack--sm" onSubmit={handleSubmit} noValidate>
+      {error ? <Alert variant="error">{error}</Alert> : null}
 
-      {error ? <p className="error mt-2">{error}</p> : null}
+      <TextField
+        label="School code"
+        name="schoolCode"
+        autoComplete="username"
+        placeholder="e.g. ALPHA"
+        required
+        value={schoolCode}
+        onChange={(event) => setSchoolCode(event.target.value)}
+      />
 
-      <form onSubmit={handleSubmit} className="card p-4 mt-4" noValidate>
-        <div className="grid gap-3">
-          <div>
-            <label className="label" htmlFor="portal-school-code">
-              School code
-            </label>
-            <input
-              id="portal-school-code"
-              type="text"
-              name="schoolCode"
-              className="input"
-              required
-              autoComplete="username"
-              placeholder="e.g. ALPHA"
-              value={schoolCode}
-              onChange={(event) => setSchoolCode(event.target.value)}
-            />
-          </div>
-          <div>
-            <label className="label" htmlFor="portal-username">
-              Username
-            </label>
-            <input
-              id="portal-username"
-              type="text"
-              name="username"
-              className="input"
-              required
-              autoComplete="username"
-              placeholder="e.g. ama.mensah"
-              value={username}
-              onChange={(event) => setUsername(event.target.value)}
-            />
-          </div>
-          <div>
-            <label className="label" htmlFor="portal-password">
-              Password
-            </label>
-            <input
-              id="portal-password"
-              type="password"
-              name="password"
-              className="input"
-              required
-              autoComplete="current-password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-            />
-          </div>
-        </div>
+      <TextField
+        label="Username"
+        name="username"
+        autoComplete="username"
+        placeholder="e.g. ama.mensah"
+        required
+        value={username}
+        onChange={(event) => setUsername(event.target.value)}
+      />
 
-        <Button type="submit" loading={pending} className="w-100">
+      <TextField
+        label="Password"
+        name="password"
+        type="password"
+        autoComplete="current-password"
+        required
+        value={password}
+        onChange={(event) => setPassword(event.target.value)}
+      />
+
+      <div>
+        <Button type="submit" loading={pending}>
           {pending ? "Signing in…" : "Sign in"}
         </Button>
-      </form>
-
-      <p className="muted mt-3">
-        Don’t have an account? Ask your teacher or administrator to activate your
-        portal access.
-      </p>
-    </div>
+      </div>
+    </form>
   );
 }

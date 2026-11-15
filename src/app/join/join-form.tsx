@@ -3,6 +3,9 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 
+import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { TextField } from "@/components/ui/form";
 import { parseInvitationTokenFragment } from "@/lib/staff/invitations";
 
 interface InvitationPreview {
@@ -154,85 +157,90 @@ export function JoinForm() {
     (fragment === undefined ||
       (token !== null && preview === null && invalidMessage === null));
 
+  if (checking) {
+    return (
+      <p className="muted" role="status">
+        Checking your invitation link…
+      </p>
+    );
+  }
+
+  if (accepted) {
+    return (
+      <div className="stack stack--sm">
+        <Alert variant="success">
+          Your account is ready. Sign in with your email address and new
+          password.
+        </Alert>
+        <p>
+          <Link href="/sign-in" className="link">
+            Go to sign in
+          </Link>
+        </p>
+      </div>
+    );
+  }
+
+  if (preview === null) {
+    return (
+      <div className="stack stack--sm">
+        <Alert variant="error">
+          {invalidMessage ??
+            "That invitation link is not valid, has expired, or has already been used."}
+        </Alert>
+        <p className="muted">
+          Ask your school administrator for a new invitation link, then open it
+          again.
+        </p>
+      </div>
+    );
+  }
+
   return (
-    <main style={{ padding: "2rem", maxWidth: "26rem" }}>
-      <h1>Accept your invitation</h1>
+    <form className="stack stack--sm" onSubmit={onSubmit} noValidate>
+      <p>
+        {preview.schoolName ? (
+          <>
+            <strong>{preview.schoolName}</strong> has invited you to join as{" "}
+          </>
+        ) : (
+          <>You have been invited to join as </>
+        )}
+        <strong>{roleLabel(preview.role)}</strong>.
+      </p>
 
-      {checking ? <p>Checking your invitation link…</p> : null}
+      <p className="muted">
+        Set a password for <strong>{preview.email}</strong>. You will sign in
+        with this email and password.
+      </p>
 
-      {accepted ? (
-        <div>
-          <p role="status">
-            Your account is ready. Sign in with your email address and new
-            password.
-          </p>
-          <Link href="/sign-in">Go to sign in</Link>
-        </div>
+      {preview.expiresAt ? (
+        <p className="muted">
+          This invitation expires on{" "}
+          {new Date(preview.expiresAt).toLocaleString()}.
+        </p>
       ) : null}
 
-      {!accepted && !checking && preview === null ? (
-        <div>
-          <p role="alert">
-            {invalidMessage ??
-              "That invitation link is not valid, has expired, or has already been used."}
-          </p>
-          <p>
-            Ask your school administrator for a new invitation link, then open
-            it again.
-          </p>
-        </div>
-      ) : null}
+      {error ? <Alert variant="error">{error}</Alert> : null}
 
-      {!accepted && preview ? (
-        <div>
-          <p>
-            {preview.schoolName ? (
-              <>
-                <strong>{preview.schoolName}</strong> has invited you to join
-                as{" "}
-              </>
-            ) : (
-              <>You have been invited to join as </>
-            )}
-            <strong>{roleLabel(preview.role)}</strong>.
-          </p>
-          <p>
-            Set a password for <strong>{preview.email}</strong>. You will sign
-            in with this email and password.
-          </p>
-          {preview.expiresAt ? (
-            <p>
-              This invitation expires on{" "}
-              {new Date(preview.expiresAt).toLocaleString()}.
-            </p>
-          ) : null}
-          <form
-            onSubmit={onSubmit}
-            style={{ display: "grid", gap: "0.75rem", marginTop: "1rem" }}
-          >
-            <label htmlFor="password">Password (8–72 characters)</label>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              minLength={8}
-              maxLength={72}
-              autoComplete="new-password"
-              required
-            />
-            <button type="submit" disabled={submitting}>
-              {submitting ? "Saving…" : "Set password and activate account"}
-            </button>
-            {error ? (
-              <p role="alert" style={{ color: "var(--foreground)" }}>
-                {error}
-              </p>
-            ) : null}
-          </form>
-        </div>
-      ) : null}
-    </main>
+      <TextField
+        label="Password"
+        name="password"
+        type="password"
+        autoComplete="new-password"
+        minLength={8}
+        maxLength={72}
+        hint="Between 8 and 72 characters."
+        required
+        value={password}
+        onChange={(event) => setPassword(event.target.value)}
+      />
+
+      <div>
+        <Button type="submit" loading={submitting}>
+          {submitting ? "Saving…" : "Set password and activate account"}
+        </Button>
+      </div>
+    </form>
   );
 }
