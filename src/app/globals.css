@@ -604,6 +604,10 @@ body.sidebar-collapsed .sidebar,
   width: 64px;
 }
 
+.sidebar--placeholder {
+  pointer-events: none;
+}
+
 .sidebar__top {
   display: flex;
   align-items: center;
@@ -736,6 +740,41 @@ body.sidebar-collapsed .sidebar,
 .sidebar__footer {
   padding: 0.75rem;
   border-top: 1px solid var(--border);
+}
+
+.sidebar__soon {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.5rem 0.75rem;
+}
+
+.sidebar__section-label {
+  padding-bottom: 0.25rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.sidebar__divider {
+  margin: 0 0 0.25rem;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+.sidebar__link--soon {
+  color: var(--muted-foreground);
+  cursor: default;
+}
+
+.sidebar__link--soon:hover {
+  background: transparent;
+}
+
+.sidebar__soon-badge {
+  margin-left: auto;
 }
 
 .sidebar-mobile-toggle {

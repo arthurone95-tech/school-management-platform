@@ -8,17 +8,22 @@ import {
   BookOpen,
   CalendarCheck,
   CalendarDays,
+  ClipboardCheck,
+  ClipboardList,
   GraduationCap,
   Inbox,
   LayoutDashboard,
   LogOut,
   Menu,
+  MessageSquare,
   PanelLeftClose,
   PanelLeftOpen,
-  X,
   Settings,
+  ShieldCheck,
   Upload,
   Users,
+  Wallet,
+  X,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -91,6 +96,19 @@ export function Sidebar(props: SidebarProps) {
     { href: "/dashboard/data", label: "Import / export", icon: Upload, show: props.canViewData },
     { href: "/dashboard/invitations", label: "Invitations", icon: Inbox, show: props.canManageMembers },
     { href: "/dashboard/school", label: "Settings", icon: Settings, show: props.canViewSettings },
+  ];
+
+  // Modules that are designed but not built yet. They are listed so the
+  // navigation reflects the full product, but they are not clickable.
+  const comingSoon: ReadonlyArray<{
+    readonly label: string;
+    readonly icon: React.ComponentType<{ className?: string }>;
+  }> = [
+    { label: "Examinations", icon: ClipboardList },
+    { label: "Grading", icon: ClipboardCheck },
+    { label: "Accounts", icon: Wallet },
+    { label: "Communication", icon: MessageSquare },
+    { label: "Security", icon: ShieldCheck },
   ];
 
   return (
@@ -175,6 +193,38 @@ export function Sidebar(props: SidebarProps) {
               );
             })}
         </nav>
+        <div className="sidebar__soon">
+          {collapsed ? (
+            <hr className="sidebar__divider" />
+          ) : (
+            <p className="sidebar__section-label">Coming soon</p>
+          )}
+          {comingSoon.map((item) => {
+            const Icon = item.icon;
+            return (
+              <span
+                key={item.label}
+                className="sidebar__link sidebar__link--soon"
+                aria-disabled="true"
+                title={collapsed ? `${item.label} (coming soon)` : undefined}
+              >
+                <Icon className="sidebar__icon" />
+                {collapsed ? (
+                  <span className="sidebar__tooltip" role="tooltip">
+                    {item.label} (coming soon)
+                  </span>
+                ) : (
+                  <>
+                    <span className="sidebar__label">{item.label}</span>
+                    <span className="badge badge--neutral sidebar__soon-badge">
+                      Soon
+                    </span>
+                  </>
+                )}
+              </span>
+            );
+          })}
+        </div>
         <div className="sidebar__footer">
           <Button
             variant="secondary"

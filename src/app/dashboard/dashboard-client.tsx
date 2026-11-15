@@ -212,19 +212,19 @@ export function DashboardClient({
         {/* Quick actions */}
         <div className="dashboard-quick-actions">
           <Link
-            href="/dashboard/learners/new"
+            href="/dashboard/learners"
             className="dashboard-quick-action-btn btn btn--secondary"
           >
             Add student
           </Link>
           <Link
-            href="/dashboard/classes/new"
+            href="/dashboard/classes"
             className="dashboard-quick-action-btn btn btn--secondary"
           >
             Create class
           </Link>
           <Link
-            href="/dashboard/staff/invite"
+            href="/dashboard/staff"
             className="dashboard-quick-action-btn btn btn--secondary"
           >
             Invite teacher

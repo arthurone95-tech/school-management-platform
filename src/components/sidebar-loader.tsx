@@ -35,6 +35,10 @@ export function SidebarLoader() {
     };
   }, []);
 
-  if (!props) return null;
+  if (!props) {
+    // Reserve the sidebar's width while the staff context loads so the page
+    // content does not jump sideways. The placeholder is decorative only.
+    return <aside className="sidebar sidebar--placeholder" aria-hidden="true" />;
+  }
   return <Sidebar {...props} />;
 }

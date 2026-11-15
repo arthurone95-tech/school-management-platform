@@ -166,7 +166,7 @@ export function JoinForm() {
             Your account is ready. Sign in with your email address and new
             password.
           </p>
-          <Link href="/">Go to sign in</Link>
+          <Link href="/sign-in">Go to sign in</Link>
         </div>
       ) : null}
 
