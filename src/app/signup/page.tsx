@@ -17,8 +17,8 @@ export default function SignupPage() {
         </h1>
 
         <p className="text-center text-muted-foreground mb-8">
-          Create your school account in just a few minutes. Once you're signed
-          up, you'll be able to add classes, invite teachers, and track
+          Create your school account in just a few minutes. Once you’re signed
+          up, you’ll be able to add classes, invite teachers, and track
           student attendance and results.
         </p>
 
