@@ -12,13 +12,12 @@ import { useRouter } from "next/navigation";
  * Allows new schools to self-serve sign-up by creating a school account
  * and administrator auth account. On successful submission:
  *   - A school row is created in the database
- *   - An administrator Auth account is created (unconfirmed)
- *   - A verification email is sent to the administrator
- *   - The user is linked to the school as school_administrator
- *   - Default grade bands are seeded
+ *   - An administrator Auth account is created (confirmed, immediate sign-in)
+ * - The user is linked to the school as school_administrator
+ * - Default grade bands are seeded
  *
- * On success the user is redirected to the sign-in page with a message
- * to check their email for verification. Once verified, they can sign in.
+ * On success the user is redirected to the sign-in page and can immediately
+ * sign in with the provided email and password.
  */
 export function SignupForm() {
   const [schoolName, setSchoolName] = useState("");
@@ -27,14 +26,12 @@ export function SignupForm() {
   const [adminPassword, setAdminPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showVerificationMessage, setShowVerificationMessage] = useState(false);
   const router = useRouter();
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
     setLoading(true);
-    setShowVerificationMessage(false);
 
     // Validate school code format: 4-10 chars, letters A-H,J-N,P-R,T,Y and digits 0-9
     const SCHOOL_CODE_RE = /^[A-HJ-NP-RT-Y0-9]{4,10}$/;
@@ -91,25 +88,13 @@ export function SignupForm() {
         return;
       }
 
-      // Sign-up successful
-      if (responseJson.needsEmailVerification) {
-        // Show verification message and redirect to sign-in
-        setShowVerificationMessage(true);
-        // Still redirect to sign-in so the user can check email
-        const code = responseJson.school?.code;
-        if (code) {
-          router.replace(`/sign-in?school=${encodeURIComponent(code)}&verification=true`);
-        } else {
-          router.replace("/sign-in?verification=true");
-        }
+      // Sign-up successful - redirect to sign-in
+      // Email is confirmed, admin can sign in immediately
+      const code = responseJson.school?.code;
+      if (code) {
+        router.replace(`/sign-in?school=${encodeURIComponent(code)}`);
       } else {
-        // Direct redirect (no verification needed - rare path)
-        const code = responseJson.school?.code;
-        if (code) {
-          router.replace(`/sign-in?school=${encodeURIComponent(code)}`);
-        } else {
-          router.replace("/sign-in");
-        }
+        router.replace("/sign-in");
       }
     } catch {
       setError("Could not reach the server. Check your connection and try again.");
@@ -123,13 +108,6 @@ export function SignupForm() {
       onSubmit={handleSubmit}
       noValidate
     >
-      {showVerificationMessage && (
-        <Alert variant="info" role={null}>
-          A verification email has been sent to the administrator. Once the
-          administrator verifies their email, they can sign in to the platform.
-        </Alert>
-      )}
-
       {error && (
         <Alert variant="error" role={null}>
           {error}

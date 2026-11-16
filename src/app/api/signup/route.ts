@@ -77,13 +77,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return json({ ok: false, error: "The school could not be created." }, 500);
   }
 
-  // 2. Create the administrator's Auth account (unconfirmed - verification email sent).
-  // We do NOT set email_confirm: true so that Supabase sends a confirmation email.
+  // 2. Create the administrator's Auth account (confirmed - can sign in immediately).
+  // We set email_confirm: true so the account is immediately active.
   const { data: userData, error: userError } =
     await admin.auth.admin.createUser({
       email: adminEmail,
       password: adminPassword,
-      email_confirm: false, // <-- changed: verification email will be sent
+      email_confirm: true, // <-- confirmed: immediate sign-in
       app_metadata: { provisioned_by: "school-platform", school_id: school.id },
     });
 
@@ -147,12 +147,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   );
 
   if (bandsError) {
-    // Bands are convenience data; report success but warn.
-    // The user was created and membership linked; they just need to verify email.
+    // Bands are convenience data; report success.
+    // Email is confirmed, admin can sign in immediately.
     return json(
       {
         ok: true,
-        needsEmailVerification: true,
+        needsEmailVerification: false,
         school: { id: school.id, name: school.name, code: school.code },
         admin: {
           email: adminEmail,
@@ -160,25 +160,25 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           // Password not exposed for security.
         },
         message:
-          "School created. A verification email has been sent to the administrator. Once verified, the admin can sign in.",
+          "School created successfully. The administrator account is confirmed and ready to use.",
       },
       201,
     );
   }
 
   // 5. Success - school created, admin created, membership linked, grade bands seeded.
-  // Since email_confirm was set to false, the admin must verify their email before signing in.
+  // Email is confirmed, admin can sign in immediately without verification.
   return json(
     {
       ok: true,
-      needsEmailVerification: true,
+      needsEmailVerification: false,
       school: { id: school.id, name: school.name, code: school.code },
       admin: {
         email: adminEmail,
         userId,
       },
       message:
-        "School created. A verification email has been sent to the administrator. Once verified, the admin can sign in.",
+        "School created successfully. The administrator account is confirmed and ready to use.",
     },
     201,
   );
