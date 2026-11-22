@@ -42,7 +42,7 @@ export function SignupForm() {
     }
     if (typeof schoolCode !== "string" || !SCHOOL_CODE_RE.test(schoolCode)) {
       setError(
-        "School code must be 4–10 characters using letters A-H,J-N,P-R,T,Y and digits 0-9.",
+        "School code must be 4–10 characters. Don't use I, O, S or Z — they look like 1, 0, 5 and 2.",
       );
       setLoading(false);
       return;
@@ -126,10 +126,10 @@ export function SignupForm() {
       <TextField
         label="School code"
         name="schoolCode"
-        placeholder="e.g. ABC-001"
+        placeholder="e.g. ABC1234"
         value={schoolCode}
         onChange={(e) => setSchoolCode(e.target.value)}
-        hint="4-10 chars: letters A-H,J-N,P-R,T,Y and digits 0-9"
+        hint="4–10 characters. Don't use I, O, S or Z — they look like 1, 0, 5 and 2."
         required
       />
 

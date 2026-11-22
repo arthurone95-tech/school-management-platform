@@ -17,8 +17,18 @@ function json(body: unknown, status = 200): NextResponse {
   });
 }
 
-function parseBody(value: unknown): SignupBody | null {
-  if (typeof value !== "object" || value === null) return null;
+const SCHOOL_CODE_RE = /^[A-HJ-NP-RT-Y0-9]{4,10}$/;
+const SCHOOL_CODE_ERROR =
+  "School code must be 4–10 characters. Don't use I, O, S or Z — they look like 1, 0, 5 and 2.";
+
+type ParseResult =
+  | { readonly ok: true; readonly value: SignupBody }
+  | { readonly ok: false; readonly error: string };
+
+function parseBody(value: unknown): ParseResult {
+  if (typeof value !== "object" || value === null) {
+    return { ok: false, error: "Invalid request body." };
+  }
   const record = value as Record<string, unknown>;
   const schoolName = record.schoolName;
   const schoolCode = record.schoolCode;
@@ -30,36 +40,46 @@ function parseBody(value: unknown): SignupBody | null {
     schoolName.trim().length < 2 ||
     schoolName.trim().length > 120
   ) {
-    return null;
+    return {
+      ok: false,
+      error: "School name must be between 2 and 120 characters.",
+    };
   }
-  // School code regex: letters A-H,J-N,P-R,T,Y and digits 0-9
-  const SCHOOL_CODE_RE = /^[A-HJ-NP-RT-Y0-9]{4,10}$/;
   if (typeof schoolCode !== "string" || !SCHOOL_CODE_RE.test(schoolCode)) {
-    return null;
+    return { ok: false, error: SCHOOL_CODE_ERROR };
   }
   if (typeof adminEmail !== "string" || adminEmail.trim().length < 6) {
-    return null;
+    return {
+      ok: false,
+      error: "Administrator email must be at least 6 characters.",
+    };
   }
   if (typeof adminPassword !== "string" || adminPassword.trim().length < 6) {
-    return null;
+    return {
+      ok: false,
+      error: "Administrator password must be at least 6 characters.",
+    };
   }
 
   return {
-    schoolName: schoolName.trim(),
-    schoolCode,
-    adminEmail: adminEmail.trim(),
-    adminPassword: adminPassword.trim(),
+    ok: true,
+    value: {
+      schoolName: schoolName.trim(),
+      schoolCode,
+      adminEmail: adminEmail.trim(),
+      adminPassword: adminPassword.trim(),
+    },
   };
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const body = await request.json();
   const parsed = parseBody(body);
-  if (!parsed) {
-    return json({ ok: false, error: "Invalid request body." }, 400);
+  if (!parsed.ok) {
+    return json({ ok: false, error: parsed.error }, 400);
   }
 
-  const { schoolName, schoolCode, adminEmail, adminPassword } = parsed;
+  const { schoolName, schoolCode, adminEmail, adminPassword } = parsed.value;
 
   const admin = createSupabaseAdminClient();
 
