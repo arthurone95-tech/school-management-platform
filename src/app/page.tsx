@@ -195,12 +195,12 @@ const audiences: { icon: IconName; title: string; text: string }[] = [
   {
     icon: "student",
     title: "Students",
-    text: "Sign in to the student portal, view results, and print report cards.",
+    text: "Sign in to the student portal using the credentials your school gives you.",
   },
   {
     icon: "parent",
     title: "Parents",
-    text: "Follow results and report cards through the student portal.",
+    text: "Parent access is coming soon.",
   },
 ];
 

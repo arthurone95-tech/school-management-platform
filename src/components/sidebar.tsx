@@ -92,7 +92,19 @@ export function Sidebar(props: SidebarProps) {
     { href: "/dashboard/staff", label: "Staff", icon: Users, show: props.canManageMembers },
     { href: "/dashboard/attendance", label: "Attendance", icon: CalendarCheck, show: showAttendance },
     { href: "/dashboard/results", label: "Results", icon: BarChart3, show: props.canViewResults },
+    {
+      href: "/dashboard/school/assessment",
+      label: "Grading",
+      icon: ClipboardCheck,
+      show: props.canViewSettings || props.canViewResults,
+    },
     { href: "/dashboard/academics", label: "Academics", icon: CalendarDays, show: props.canViewAcademics },
+    {
+      href: "/dashboard/academics?tab=exams",
+      label: "Examinations",
+      icon: ClipboardList,
+      show: props.canViewAcademics,
+    },
     { href: "/dashboard/data", label: "Import / export", icon: Upload, show: props.canViewData },
     { href: "/dashboard/invitations", label: "Invitations", icon: Inbox, show: props.canManageMembers },
     { href: "/dashboard/school", label: "Settings", icon: Settings, show: props.canViewSettings },
@@ -104,8 +116,6 @@ export function Sidebar(props: SidebarProps) {
     readonly label: string;
     readonly icon: React.ComponentType<{ className?: string }>;
   }> = [
-    { label: "Examinations", icon: ClipboardList },
-    { label: "Grading", icon: ClipboardCheck },
     { label: "Accounts", icon: Wallet },
     { label: "Communication", icon: MessageSquare },
     { label: "Security", icon: ShieldCheck },
@@ -168,10 +178,13 @@ export function Sidebar(props: SidebarProps) {
           {items
             .filter((item) => item.show)
             .map((item) => {
+              // Links with a query string are shortcuts into another page;
+              // match on the path portion only so they can still highlight.
+              const itemPath = item.href.split("?")[0];
               const active =
-                item.href === "/dashboard"
-                  ? pathname === "/dashboard"
-                  : pathname === item.href || pathname.startsWith(item.href + "/");
+                itemPath === "/dashboard"
+                  ? pathname === itemPath
+                  : pathname === itemPath || pathname.startsWith(itemPath + "/");
               const Icon = item.icon;
               return (
                 <Link

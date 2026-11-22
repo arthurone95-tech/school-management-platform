@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -95,7 +96,24 @@ export function AcademicsClient({
   readonly canReadAcademic: boolean;
   readonly canManageAcademic: boolean;
 }) {
-  const [tab, setTab] = useState<"years" | "exams">("years");
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  // The tab is held in the URL so the sidebar shortcut can open it directly.
+  const tab = searchParams.get("tab") === "exams" ? "exams" : "years";
+
+  function selectTab(next: "years" | "exams") {
+    const params = new URLSearchParams(searchParams.toString());
+    if (next === "exams") {
+      params.set("tab", "exams");
+    } else {
+      params.delete("tab");
+    }
+    const query = params.toString();
+    router.replace(
+      query ? `/dashboard/academics?${query}` : "/dashboard/academics",
+      { scroll: false },
+    );
+  }
 
   return (
     <div className="container stack">
@@ -110,14 +128,14 @@ export function AcademicsClient({
         <button
           type="button"
           className={tab === "years" ? "btn btn--primary btn--sm" : "btn btn--secondary btn--sm"}
-          onClick={() => setTab("years")}
+          onClick={() => selectTab("years")}
         >
           Academic Years & Terms
         </button>
         <button
           type="button"
           className={tab === "exams" ? "btn btn--primary btn--sm" : "btn btn--secondary btn--sm"}
-          onClick={() => setTab("exams")}
+          onClick={() => selectTab("exams")}
         >
           Examinations
         </button>

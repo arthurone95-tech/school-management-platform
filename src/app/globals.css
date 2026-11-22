@@ -1411,11 +1411,6 @@ body.sidebar-collapsed .sidebar,
   min-width: 0;
 }
 
-.checklist__note {
-  font-size: 0.8125rem;
-  color: var(--muted-foreground);
-}
-
 .checklist__link {
   margin-left: auto;
   white-space: nowrap;

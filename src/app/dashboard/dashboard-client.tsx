@@ -155,10 +155,14 @@ export function DashboardClient({
               </li>
               <li className="checklist__item">
                 <span className="checklist__icon">-</span>
-                <span className="checklist__label">
-                  Subjects
-                  <span className="checklist__note">Coming soon</span>
-                </span>
+                <span className="checklist__label">Subjects</span>
+                <Link
+                  href="/dashboard/school/assessment"
+                  className="checklist__link"
+                  aria-current={active("/dashboard/school/assessment") ? "page" : undefined}
+                >
+                  View
+                </Link>
               </li>
               <li className={`
                 checklist__item${
