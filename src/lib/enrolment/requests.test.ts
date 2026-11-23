@@ -5,6 +5,7 @@ import {
   parseClassUpdateInput,
   parseEnrolmentInput,
   parseLearnerCorrectionInput,
+  parseLearnerGenderFilter,
   parseLearnerIdInput,
   parseLearnerStatusFilter,
   parseLearnerStatusInput,
@@ -301,6 +302,20 @@ describe("parseLearnerStatusInput", () => {
       parseLearnerStatusInput({ learnerId: LEARNER_ID, status: "removed" }).ok,
     ).toBe(false);
     expect(parseLearnerStatusInput({ learnerId: LEARNER_ID }).ok).toBe(false);
+  });
+});
+
+describe("parseLearnerGenderFilter", () => {
+  it("accepts only the stored gender values", () => {
+    expect(parseLearnerGenderFilter("male")).toBe("male");
+    expect(parseLearnerGenderFilter("female")).toBe("female");
+    expect(parseLearnerGenderFilter("other")).toBe("other");
+  });
+
+  it("falls back to all for missing or hostile values", () => {
+    expect(parseLearnerGenderFilter(null)).toBe("all");
+    expect(parseLearnerGenderFilter("MALE")).toBe("all");
+    expect(parseLearnerGenderFilter("everything")).toBe("all");
   });
 });
 

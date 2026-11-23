@@ -185,9 +185,9 @@ interface ExamTimetableSlotRow {
   readonly id: string;
   readonly exam_schedule_id: string;
   readonly subject_id: string;
-  readonly subject_name: string | null;
+  readonly subjects: { readonly name: string }[] | null;
   readonly class_id: string;
-  readonly class_name: string | null;
+  readonly classes: { readonly name: string }[] | null;
   readonly exam_date: string;
   readonly start_time: string;
   readonly end_time: string;
@@ -200,9 +200,9 @@ function toExamTimetableSlot(row: ExamTimetableSlotRow): ExamTimetableSlotSummar
     id: row.id,
     examScheduleId: row.exam_schedule_id,
     subjectId: row.subject_id,
-    subjectName: row.subject_name,
+    subjectName: row.subjects?.[0]?.name ?? null,
     classId: row.class_id,
-    className: row.class_name,
+    className: row.classes?.[0]?.name ?? null,
     examDate: row.exam_date,
     startTime: row.start_time,
     endTime: row.end_time,
@@ -313,6 +313,103 @@ export async function createExamTimetableSlot(input: {
       reason,
       message: failureMessage(reason, "Exam timetable slot"),
     };
+  }
+  return { ok: true, slot: toExamTimetableSlot(data as unknown as ExamTimetableSlotRow) };
+}
+
+export async function updateExamTimetableSlot(input: {
+  readonly supabase: ServerClient;
+  readonly schoolId: string;
+  readonly slotId: string;
+  readonly supervisorId?: string | null;
+  readonly roomName?: string | null;
+}): Promise<
+  | { readonly ok: true; readonly slot: ExamTimetableSlotSummary }
+  | { readonly ok: false; readonly reason: FailureReason; readonly message: string }
+> {
+  const { supabase, schoolId, slotId } = input;
+
+  const { data: currentData, error: currentError } = await supabase
+    .from("exam_timetable_slots")
+    .select("exam_date, start_time, end_time, room_name, supervisor_id")
+    .eq("id", slotId)
+    .eq("school_id", schoolId)
+    .maybeSingle();
+
+  if (currentError) {
+    return { ok: false, reason: "other", message: failureMessage("other", "Exam timetable slot") };
+  }
+  if (!currentData) {
+    return { ok: false, reason: "not_found", message: failureMessage("not_found", "Exam timetable slot") };
+  }
+
+  const current = currentData as {
+    exam_date: string;
+    start_time: string;
+    end_time: string;
+    room_name: string | null;
+    supervisor_id: string | null;
+  };
+  const nextRoom = input.roomName === undefined ? current.room_name : input.roomName;
+  const nextSupervisor =
+    input.supervisorId === undefined ? current.supervisor_id : input.supervisorId;
+
+  if (nextRoom !== null) {
+    const { data: roomConflict } = await supabase
+      .from("exam_timetable_slots")
+      .select("id")
+      .eq("school_id", schoolId)
+      .eq("exam_date", current.exam_date)
+      .eq("room_name", nextRoom)
+      .lt("start_time", current.end_time)
+      .gt("end_time", current.start_time)
+      .neq("id", slotId)
+      .limit(1);
+    if (roomConflict && roomConflict.length > 0) {
+      return {
+        ok: false,
+        reason: "duplicate",
+        message: "This room is already booked for that time slot.",
+      };
+    }
+  }
+
+  if (nextSupervisor !== null) {
+    const { data: supervisorConflict } = await supabase
+      .from("exam_timetable_slots")
+      .select("id")
+      .eq("school_id", schoolId)
+      .eq("exam_date", current.exam_date)
+      .eq("supervisor_id", nextSupervisor)
+      .lt("start_time", current.end_time)
+      .gt("end_time", current.start_time)
+      .neq("id", slotId)
+      .limit(1);
+    if (supervisorConflict && supervisorConflict.length > 0) {
+      return {
+        ok: false,
+        reason: "duplicate",
+        message: "This supervisor is already assigned for that time slot.",
+      };
+    }
+  }
+
+  const { data, error } = await supabase
+    .from("exam_timetable_slots")
+    .update({ room_name: nextRoom, supervisor_id: nextSupervisor })
+    .eq("id", slotId)
+    .eq("school_id", schoolId)
+    .select(
+      "id, exam_schedule_id, subject_id, subjects ( name ), class_id, classes ( name ), exam_date, start_time, end_time, room_name, supervisor_id",
+    )
+    .maybeSingle();
+
+  if (error) {
+    const reason = classify(error);
+    return { ok: false, reason, message: failureMessage(reason, "Exam timetable slot") };
+  }
+  if (!data) {
+    return { ok: false, reason: "not_found", message: failureMessage("not_found", "Exam timetable slot") };
   }
   return { ok: true, slot: toExamTimetableSlot(data as unknown as ExamTimetableSlotRow) };
 }

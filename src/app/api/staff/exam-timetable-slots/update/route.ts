@@ -1,6 +1,10 @@
 import type { NextResponse } from "next/server";
 
-import { deleteExamTimetableSlot } from "@/lib/server/academics-exams";
+import { parseExamTimetableSlotUpdateInput } from "@/lib/administration/requests";
+import {
+  deleteExamTimetableSlot,
+  updateExamTimetableSlot,
+} from "@/lib/server/academics-exams";
 import { json } from "@/lib/server/http";
 import { resolveSchoolAccess } from "@/lib/server/school-access";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -31,20 +35,44 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   const record = body as Record<string, unknown> | null;
-  const slotId = typeof record?.slotId === "string" ? record.slotId.trim() : null;
-  if (slotId === null || slotId.length === 0) {
-    return json({ ok: false, error: "Invalid slot ID." }, 400);
+  const action = typeof record?.action === "string" ? record.action : "update";
+
+  if (action === "delete") {
+    const slotId = typeof record?.slotId === "string" ? record.slotId.trim() : null;
+    if (slotId === null || slotId.length === 0) {
+      return json({ ok: false, error: "Invalid slot ID." }, 400);
+    }
+    const result = await deleteExamTimetableSlot({
+      supabase,
+      schoolId: access.schoolId,
+      slotId,
+    });
+    if (!result.ok) {
+      return json({ ok: false, error: result.message }, REASON_STATUS[result.reason]);
+    }
+    return json({ ok: true });
   }
 
-  const result = await deleteExamTimetableSlot({
+  const parsed = parseExamTimetableSlotUpdateInput(body);
+  if (!parsed.ok) {
+    return json({ ok: false, error: parsed.message }, 400);
+  }
+
+  const result = await updateExamTimetableSlot({
     supabase,
     schoolId: access.schoolId,
-    slotId,
+    slotId: parsed.value.slotId,
+    ...(parsed.value.supervisorId !== undefined
+      ? { supervisorId: parsed.value.supervisorId }
+      : {}),
+    ...(parsed.value.roomName !== undefined
+      ? { roomName: parsed.value.roomName }
+      : {}),
   });
 
   if (!result.ok) {
     return json({ ok: false, error: result.message }, REASON_STATUS[result.reason]);
   }
 
-  return json({ ok: true });
+  return json({ ok: true, slot: result.slot });
 }

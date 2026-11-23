@@ -38,11 +38,13 @@ export async function ResultsGate() {
     canManageAssessments,
     canRecordResults,
     canReadReport,
+    canExportReport,
   ] = await Promise.all([
     context.hasPermission("assessment.read"),
     context.hasPermission("assessment.manage"),
     context.hasPermission("result.record"),
     context.hasPermission("report.read"),
+    context.hasPermission("report.export"),
   ]);
 
   if (!canReadAssessments && !canReadReport) {
@@ -64,6 +66,7 @@ export async function ResultsGate() {
       canManageAssessments={canManageAssessments}
       canRecordResults={canRecordResults}
       canReadReport={canReadReport}
+      canExportReport={canExportReport}
     />
   );
 }

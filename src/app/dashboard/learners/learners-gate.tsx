@@ -24,14 +24,23 @@ export async function LearnersGate() {
     redirect("/sign-in");
   }
 
-  const [canRead, canEnrol, canCorrect, canChangePlacement, canManageClasses] =
-    await Promise.all([
-      context.hasPermission("learner.read"),
-      context.hasPermission("learner.create"),
-      context.hasPermission("learner.update"),
-      context.hasPermission("learner.placement.manage"),
-      context.hasPermission("class.manage"),
-    ]);
+  const [
+    canRead,
+    canEnrol,
+    canCorrect,
+    canChangePlacement,
+    canManageClasses,
+    canReadHistory,
+    canPortalManage,
+  ] = await Promise.all([
+    context.hasPermission("learner.read"),
+    context.hasPermission("learner.create"),
+    context.hasPermission("learner.update"),
+    context.hasPermission("learner.placement.manage"),
+    context.hasPermission("class.manage"),
+    context.hasPermission("assessment.read"),
+    context.hasPermission("learner.portal.manage"),
+  ]);
 
   return (
     <LearnersClient
@@ -43,6 +52,8 @@ export async function LearnersGate() {
       canCorrect={canCorrect}
       canChangePlacement={canChangePlacement}
       canManageClasses={canManageClasses}
+      canReadHistory={canReadHistory}
+      canPortalManage={canPortalManage}
     />
   );
 }

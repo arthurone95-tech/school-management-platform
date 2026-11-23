@@ -20,6 +20,11 @@ There is no `headmaster` role in code. The approved school-level administrator r
 - Log in to the administrative dashboard
 - See the total number of registered students
 - See the total number of teachers and staff
+- Male, female and other student counts
+- Active and inactive student counts
+- Enrolment by class
+- Upcoming school events
+- Upcoming examinations and assessments
 - Shortcuts to frequent functions (quick actions)
 
 ### B. Student Management
@@ -33,6 +38,11 @@ There is no `headmaster` role in code. The approved school-level administrator r
 - Transfer students between classes
 - Deactivate withdrawn students while preserving their history
 - Export learner records (audited CSV export)
+- Registration date and time shown on student profiles
+- Internal student IDs displayed and searchable
+- Class placement, attendance and assessment histories on student profiles
+- Printable student profiles and student lists
+- Search/filter by name, ID, class, gender and status
 
 ### C. Teacher and Staff Management
 
@@ -40,11 +50,22 @@ There is no `headmaster` role in code. The approved school-level administrator r
 - Assign teachers to classes
 - Employment/account status (active or inactive)
 - Activate and deactivate staff accounts
+- Registration date and last sign-in shown on staff records
+- Printable staff lists
 
 ### E. Academics — Academic Year and Term Management
 
+- Create and edit academic years
+- Create terms
+- Set opening and closing dates
+- Vacation periods
+- Activate the current year and term
+- Close completed terms
 - Examination periods
-- View previous years
+- View previous years and historical records
+- Academic calendars
+- Student academic histories — see Administrator → Student Management
+- Schedule school activities — see Other System Features → Events
 - Prevent unauthorized changes to closed periods
 
 ### E2. Examination Management (internal examinations)
@@ -53,14 +74,18 @@ There is no `headmaster` role in code. The approved school-level administrator r
 - Set exam dates
 - Assign subjects
 - Assign venues/rooms
+- Assign exam supervisors
 - Exam timetables (schedules and slots)
 - Manage exam records
+- Monitor marks submission and track completion — see Administrator → Results
 
 ### F. Assessment and Grading Management
 
 - Select the grading framework (GES/NaCCA or custom)
 - Configure custom grading bands
 - Manage subjects under the custom framework
+- Compulsory and optional subjects
+- Create and edit class names in the custom framework
 - Remove/deactivate classes
 - Edit subject names and codes
 - Grading scales
@@ -73,19 +98,35 @@ There is no `headmaster` role in code. The approved school-level administrator r
 - Identify missing marks
 - Class performance reports
 - Export performance data
+- Generate report cards (custom and GES)
+- Print/download results
 
 ### H. Attendance Management
 
+- View daily attendance and attendance by class
+- View attendance by individual student on the student profile
 - Late arrivals
 - Absent students
 - Authorized (excused) absences
+- Correct attendance with authorization and audit
 - Export attendance data
+
+### I. Parent and Student Account Management
+
+- Create student portal accounts
+- Activation codes and invitation links
+- Secure credential generation
+- Activation status
+- Last sign-in information for student and staff accounts
+- Staff-issued portal activation and reset codes
 
 ### K. School Settings
 
 - Edit school name
 - Upload school logo
 - School address and contact details
+- Read-only academic-level summary
+- Explanation that authority comes from the permission catalogue, not a role label
 
 ### M. Security and System Administration
 
@@ -93,6 +134,8 @@ There is no `headmaster` role in code. The approved school-level administrator r
 - Assign administrator roles
 - Restrict access to sensitive records (server-side permissions and RLS)
 - Suspend staff accounts
+- Read-only audit log viewer showing actor, action, target and changed field names
+- Read-only access-rights summary for the signed-in staff member
 
 ---
 
@@ -101,11 +144,17 @@ There is no `headmaster` role in code. The approved school-level administrator r
 ### A. Teacher Login and Dashboard
 
 - Log in with an assigned account
+- Personal dashboard
+- Assigned classes on the dashboard
+- Assigned subjects on the dashboard
+- Recent assessments and pending marking counts
+- Today's class attendance summary
 
 ### B. Class Management
 
 - View assigned classes
 - View student registration numbers
+- Print class lists for authorized classes
 
 ### C. Attendance Management
 
@@ -122,6 +171,7 @@ There is no `headmaster` role in code. The approved school-level administrator r
 
 ### E. Assessment and Examination Management
 
+- Create class exercises, assignments, quizzes and tests (custom assessments)
 - Record continuous assessment marks
 - Record exam marks
 - Edit marks before submission
@@ -174,6 +224,8 @@ Parent/Guardian access is deferred under D-021. Only the student authentication 
 ### F. Events and Calendar
 
 - Academic calendar (academic years and terms) — see also Administrator → Academics
+- School events list
+- Create, edit and delete school events with dates and event types
 
 ### H. Analytics and Reporting
 

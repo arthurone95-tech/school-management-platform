@@ -58,6 +58,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     ...(parsed.value.isCurrent !== undefined
       ? { isCurrent: parsed.value.isCurrent }
       : {}),
+    ...(parsed.value.status !== undefined ? { status: parsed.value.status } : {}),
   });
 
   if (!result.ok) {

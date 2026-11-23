@@ -5,10 +5,17 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 
 import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { SelectField } from "@/components/ui/form";
+import { AUDIT_PAGE_SIZE, type AuditEventPage } from "@/lib/audit/types";
+import {
+  auditActionLabel,
+  auditTableLabel,
+  formatDateTime,
+} from "@/lib/domain/display";
 import {
   parseAssignmentCreateInput,
   parseAssignmentDeleteInput,
@@ -102,6 +109,57 @@ const ACTION_VERB: Record<MemberStatusAction, string> = {
   revoke: "Revoked",
 };
 
+function StaffPrintableList({
+  members,
+  schoolName,
+}: {
+  readonly members: readonly StaffMemberSummary[];
+  readonly schoolName: string | null;
+}) {
+  return (
+    <div className="terminal-report-card">
+      <h2>Staff list</h2>
+      <p className="muted">{schoolName ?? "School"}</p>
+      <div className="table-wrap">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Account</th>
+              <th>Role</th>
+              <th>Status</th>
+              <th>Joined</th>
+              <th>Last sign-in</th>
+              <th>Assignments</th>
+            </tr>
+          </thead>
+          <tbody>
+            {members.map((member) => (
+              <tr key={member.membershipId}>
+                <td>{member.email ?? "Unknown account"}</td>
+                <td>{roleLabel(member.role)}</td>
+                <td>{STATUS_LABELS[member.status] ?? member.status}</td>
+                <td>{formatDateTime(member.joinedAt)}</td>
+                <td>{formatDateTime(member.lastSignInAt)}</td>
+                <td>
+                  {member.assignments.length === 0
+                    ? "None"
+                    : member.assignments
+                        .map((assignment) =>
+                          [assignment.className, assignment.subjectName]
+                            .filter(Boolean)
+                            .join(" · "),
+                        )
+                        .join("; ")}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 export function StaffClient({
   email,
   role,
@@ -111,6 +169,7 @@ export function StaffClient({
   canViewSubjects,
   canViewStudents,
   canViewAcademic,
+  canReadAudit,
 }: {
   readonly email: string;
   readonly role: string;
@@ -120,6 +179,7 @@ export function StaffClient({
   readonly canViewSubjects: boolean;
   readonly canViewStudents: boolean;
   readonly canViewAcademic: boolean;
+  readonly canReadAudit: boolean;
 }) {
   const router = useRouter();
 
@@ -132,6 +192,10 @@ export function StaffClient({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [printRequested, setPrintRequested] = useState(false);
+  const [audit, setAudit] = useState<AuditEventPage | null>(null);
+  const [auditError, setAuditError] = useState<string | null>(null);
+  const [auditPage, setAuditPage] = useState(1);
 
   const [assigningMemberId, setAssigningMemberId] = useState<string | null>(
     null,
@@ -199,9 +263,70 @@ export function StaffClient({
     };
   }, [canManageMembers, canViewClasses, canViewSubjects, reloadKey]);
 
+  useEffect(() => {
+    if (!canReadAudit) {
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      let response: Response;
+      try {
+        response = await fetch(`/api/staff/audit?page=${auditPage}`, {
+          headers: { Accept: "application/json" },
+        });
+      } catch {
+        if (!cancelled) {
+          setAudit(null);
+          setAuditError(NETWORK_MESSAGE);
+        }
+        return;
+      }
+      const payload = (await response.json().catch(() => ({}))) as {
+        readonly ok?: boolean;
+        readonly error?: string;
+        readonly events?: AuditEventPage["events"];
+        readonly page?: number;
+        readonly total?: number;
+      };
+      if (
+        cancelled ||
+        !response.ok ||
+        payload.ok !== true ||
+        !payload.events ||
+        typeof payload.total !== "number"
+      ) {
+        if (!cancelled) {
+          setAudit(null);
+          setAuditError(payload.error ?? "The activity log could not be loaded.");
+        }
+        return;
+      }
+      setAudit({
+        events: payload.events,
+        page:
+          typeof payload.page === "number" ? payload.page : auditPage,
+        pageSize: AUDIT_PAGE_SIZE,
+        total: payload.total,
+      });
+      setAuditError(null);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [canReadAudit, auditPage, reloadKey]);
+
   function reloadMembers() {
     setMembers(null);
     setReloadKey((key) => key + 1);
+  }
+
+  function printStaffList() {
+    setPrintRequested(true);
+    // Let the print-only table commit before opening the browser dialog.
+    window.setTimeout(() => {
+      window.print();
+      setPrintRequested(false);
+    }, 0);
   }
 
   async function handleSignOut() {
@@ -313,6 +438,20 @@ export function StaffClient({
     label: subject.name,
   }));
 
+  const accessRights = [
+    { label: "Manage staff and assignments", allowed: canManageMembers },
+    { label: "View classes", allowed: canViewClasses },
+    { label: "View subjects", allowed: canViewSubjects },
+    { label: "View students", allowed: canViewStudents },
+    { label: "View academic settings", allowed: canViewAcademic },
+    { label: "View activity log", allowed: canReadAudit },
+  ];
+
+  const auditTotalPages =
+    audit && audit.total > 0
+      ? Math.max(1, Math.ceil(audit.total / audit.pageSize))
+      : 1;
+
   return (
     <>
       <div className="container stack">
@@ -336,14 +475,24 @@ export function StaffClient({
                   : "The staff belonging to your school."
               }
               actions={
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={reloadMembers}
-                  loading={members === null}
-                >
-                  Refresh
-                </Button>
+                <div className="cluster">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={reloadMembers}
+                    loading={members === null}
+                  >
+                    Refresh
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={!members || members.length === 0}
+                    onClick={printStaffList}
+                  >
+                    Print list
+                  </Button>
+                </div>
               }
             />
             <CardBody className="stack stack--sm">
@@ -381,6 +530,10 @@ export function StaffClient({
                           >
                             {STATUS_LABELS[member.status] ?? member.status}
                           </span>
+                        </p>
+                        <p className="record__meta">
+                          Joined {formatDateTime(member.joinedAt)} · Last sign-in{" "}
+                          {formatDateTime(member.lastSignInAt)}
                         </p>
 
                         <div className="stack stack--sm">
@@ -544,6 +697,117 @@ export function StaffClient({
             </CardBody>
           </Card>
         )}
+
+        <Card>
+          <CardHeader
+            title="Your access rights"
+            description={`Signed in as ${roleLabel(role)}. These rights come from the school's permission catalogue and are checked again on the server.`}
+          />
+          <CardBody>
+            <ul className="record-list">
+              {accessRights.map((right) => (
+                <li className="record" key={right.label}>
+                  <div className="record__main">
+                    <p className="record__title">{right.label}</p>
+                  </div>
+                  <div className="record__actions">
+                    <Badge variant={right.allowed ? "success" : "neutral"}>
+                      {right.allowed ? "Allowed" : "Not allowed"}
+                    </Badge>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </CardBody>
+        </Card>
+
+        {canReadAudit ? (
+          <Card>
+            <CardHeader
+              title="Recent school activity"
+              description="Who created or edited a record. The audit trail stores changed field names, never the personal values themselves."
+              actions={
+                <div className="cluster">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      setAudit(null);
+                      setReloadKey((key) => key + 1);
+                    }}
+                  >
+                    Refresh
+                  </Button>
+                </div>
+              }
+            />
+            <CardBody className="stack stack--sm">
+              {auditError ? (
+                <Alert variant="error">{auditError}</Alert>
+              ) : audit === null ? (
+                <p className="muted" role="status">
+                  Loading activity…
+                </p>
+              ) : audit.events.length === 0 ? (
+                <p className="muted">No activity recorded yet.</p>
+              ) : (
+                <ul className="record-list">
+                  {audit.events.map((event) => (
+                    <li className="record" key={event.id}>
+                      <div className="record__main">
+                        <p className="record__title">
+                          {auditActionLabel(event.action)} ·{" "}
+                          {auditTableLabel(event.targetTable)}
+                        </p>
+                        <p className="record__meta">
+                          <span>
+                            {event.actorEmail ?? "Unknown account"}
+                          </span>
+                          <span>{formatDateTime(event.createdAt)}</span>
+                          <span className="mono">{event.targetId}</span>
+                        </p>
+                        <p className="muted">
+                          {event.changedColumns.length === 0
+                            ? "No field detail recorded."
+                            : `Changed: ${event.changedColumns.join(", ")}`}
+                        </p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {audit && auditTotalPages > 1 ? (
+                <div className="card__footer cluster cluster--end">
+                  <span className="muted">
+                    Page {audit.page} of {auditTotalPages}
+                  </span>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={audit.page <= 1}
+                    onClick={() => setAuditPage((page) => Math.max(1, page - 1))}
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={audit.page >= auditTotalPages}
+                    onClick={() =>
+                      setAuditPage((page) => Math.min(auditTotalPages, page + 1))
+                    }
+                  >
+                    Next
+                  </Button>
+                </div>
+              ) : null}
+            </CardBody>
+          </Card>
+        ) : null}
+
+        {printRequested && members ? (
+          <StaffPrintableList members={members} schoolName={schoolName} />
+        ) : null}
       </div>
     </>
   );

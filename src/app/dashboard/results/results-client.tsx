@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
+import { TerminalReportCard, type TerminalSubject } from "@/components/reports/TerminalReportCard";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -123,6 +124,7 @@ export function ResultsClient({
   canManageAssessments,
   canRecordResults,
   canReadReport,
+  canExportReport,
 }: {
   readonly email: string;
   readonly role: string;
@@ -131,6 +133,7 @@ export function ResultsClient({
   readonly canManageAssessments: boolean;
   readonly canRecordResults: boolean;
   readonly canReadReport: boolean;
+  readonly canExportReport: boolean;
 }) {
   const router = useRouter();
   const today = utcToday();
@@ -150,6 +153,18 @@ export function ResultsClient({
 
   const [report, setReport] = useState<ClassAcademicReport | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
+  const [reportLearnerId, setReportLearnerId] = useState("");
+  const [reportSubjects, setReportSubjects] = useState<TerminalSubject[] | null>(
+    null,
+  );
+  const [reportCardLoading, setReportCardLoading] = useState(false);
+
+  const [exportFrom, setExportFrom] = useState(() =>
+    new Date(Date.parse(`${today}T00:00:00Z`) - 90 * 86_400_000)
+      .toISOString()
+      .slice(0, 10),
+  );
+  const [exportTo, setExportTo] = useState(today);
 
   const [newName, setNewName] = useState("");
   const [newMax, setNewMax] = useState("100");
@@ -272,6 +287,8 @@ export function ResultsClient({
     setClassId(nextClassId);
     setSubjectId("");
     setReport(null);
+    setReportLearnerId("");
+    setReportSubjects(null);
     setNotice(null);
     setError(null);
     setSheet(null);
@@ -448,7 +465,109 @@ export function ResultsClient({
       return;
     }
     setReport(result.value);
+    setReportLearnerId("");
+    setReportSubjects(null);
   }
+
+  async function buildLearnerReport(learnerId: string) {
+    if (!report) return;
+    const learner = report.learners.find((item) => item.learnerId === learnerId);
+    if (!learner) return;
+
+    setError(null);
+    setReportCardLoading(true);
+    setReportLearnerId(learnerId);
+    setReportSubjects(null);
+
+    const sheets = await Promise.all(
+      report.assessments.map((assessment) =>
+        getJson<ResultSheet>(
+          `/api/staff/results?assessmentId=${encodeURIComponent(assessment.assessmentId)}`,
+          "sheet",
+        ),
+      ),
+    );
+
+    const failed = sheets.find((result) => !result.ok);
+    if (failed && !failed.ok) {
+      setReportCardLoading(false);
+      setError(failed.message);
+      return;
+    }
+
+    const subjects: TerminalSubject[] = [];
+    for (const result of sheets) {
+      if (!result.ok) continue;
+      const entry = result.value.entries.find(
+        (item) => item.learnerId === learnerId,
+      );
+      if (!entry) continue;
+      subjects.push({
+        name: result.value.assessment.subjectName
+          ? `${result.value.assessment.name} — ${result.value.assessment.subjectName}`
+          : result.value.assessment.name,
+        grade:
+          entry.grade?.label ??
+          (entry.percentage === null ? "Not marked" : `${entry.percentage}%`),
+        remarks:
+          entry.remark ??
+          (entry.score === null
+            ? "Not marked"
+            : `${entry.score}/${result.value.assessment.maxScore}`),
+      });
+    }
+
+    setReportSubjects(subjects);
+    setReportCardLoading(false);
+  }
+
+  function downloadResults() {
+    if (!classId) return;
+    const params = new URLSearchParams({
+      kind: "results",
+      classId,
+      from: exportFrom,
+      to: exportTo,
+    });
+    window.location.assign(`/api/staff/export?${params.toString()}`);
+  }
+
+  const subjectSummaries: {
+    readonly name: string;
+    readonly assessmentCount: number;
+    readonly average: number | null;
+  }[] = [];
+  if (report) {
+    const grouped = new Map<string, number[]>();
+    for (const assessment of report.assessments) {
+      const name = assessment.subjectName ?? "Whole class / mixed";
+      const values = grouped.get(name) ?? [];
+      if (assessment.averagePercentage !== null) {
+        values.push(assessment.averagePercentage);
+      }
+      grouped.set(name, values);
+    }
+    for (const [name, values] of grouped) {
+      const assessmentCount = report.assessments.filter(
+        (assessment) => (assessment.subjectName ?? "Whole class / mixed") === name,
+      ).length;
+      subjectSummaries.push({
+        name,
+        assessmentCount,
+        average:
+          values.length === 0
+            ? null
+            : Math.round(
+                (values.reduce((sum, value) => sum + value, 0) / values.length) *
+                  100,
+              ) / 100,
+      });
+    }
+  }
+
+  const reportLearner = report?.learners.find(
+    (learner) => learner.learnerId === reportLearnerId,
+  );
 
   return (
     <>
@@ -627,7 +746,7 @@ export function ResultsClient({
             <CardHeader
               title={`Marks — ${sheet.assessment.name}`}
               description={`${sheet.assessment.className} · out of ${sheet.assessment.maxScore}${
-                sheet.isEditable ? "" : " · read only"
+                sheet.isEditable ? " · changes are recorded in the audit trail" : " · read only"
               }`}
             />
             <CardBody>
@@ -731,7 +850,14 @@ export function ResultsClient({
           <Card>
             <CardHeader
               title="Class summary"
-              description="Averages across the assessments for this class."
+              description="Averages across the assessments for this class, with subject performance and report cards."
+              actions={
+                canExportReport ? (
+                  <Button size="sm" variant="secondary" onClick={downloadResults}>
+                    Download marks CSV
+                  </Button>
+                ) : null
+              }
             />
             <CardBody>
               <form className="stack" onSubmit={buildReport}>
@@ -744,6 +870,34 @@ export function ResultsClient({
                   {reportLoading ? "Building…" : "Build summary"}
                 </Button>
               </form>
+
+              {canExportReport ? (
+                <form
+                  className="inline-form"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    downloadResults();
+                  }}
+                >
+                  <TextField
+                    label="Export from"
+                    type="date"
+                    value={exportFrom}
+                    onChange={(event) => setExportFrom(event.target.value)}
+                    required
+                  />
+                  <TextField
+                    label="Export to"
+                    type="date"
+                    value={exportTo}
+                    onChange={(event) => setExportTo(event.target.value)}
+                    required
+                  />
+                  <Button type="submit" variant="secondary">
+                    Download CSV
+                  </Button>
+                </form>
+              ) : null}
 
               {report ? (
                 <div className="stack">
@@ -786,6 +940,30 @@ export function ResultsClient({
                     </ul>
                   )}
 
+                  {subjectSummaries.length > 0 ? (
+                    <div className="stack stack--sm">
+                      <p className="muted">Subject performance (mean of assessment averages)</p>
+                      <ul className="record-list">
+                        {subjectSummaries.map((summary) => (
+                          <li key={summary.name} className="record">
+                            <div className="record__main">
+                              <p className="record__title">{summary.name}</p>
+                              <p className="record__meta">
+                                {summary.assessmentCount} assessment
+                                {summary.assessmentCount === 1 ? "" : "s"}
+                              </p>
+                            </div>
+                            <div className="record__actions">
+                              <span className="badge">
+                                avg {summary.average === null ? "—" : `${summary.average}%`}
+                              </span>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+
                   {report.learners.length > 0 ? (
                     <ul className="record-list">
                       {report.learners.map((learner) => (
@@ -810,6 +988,16 @@ export function ResultsClient({
                                 {learner.bestGrade.label}
                               </span>
                             ) : null}
+                            {canReadAssessments ? (
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                loading={reportCardLoading && reportLearnerId === learner.learnerId}
+                                onClick={() => void buildLearnerReport(learner.learnerId)}
+                              >
+                                Report card
+                              </Button>
+                            ) : null}
                           </div>
                         </li>
                       ))}
@@ -817,6 +1005,46 @@ export function ResultsClient({
                   ) : null}
                 </div>
               ) : null}
+            </CardBody>
+          </Card>
+        ) : null}
+
+        {report && reportLearner && reportSubjects !== null ? (
+          <Card>
+            <CardHeader
+              title={`Custom report card — ${reportLearner.fullName}`}
+              description="Built from this learner’s recorded marks across the class’s active assessments."
+              actions={
+                <>
+                  <Button size="sm" variant="secondary" onClick={() => window.print()}>
+                    Print report card
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setReportLearnerId("");
+                      setReportSubjects(null);
+                    }}
+                  >
+                    Close
+                  </Button>
+                </>
+              }
+            />
+            <CardBody>
+              <TerminalReportCard
+                schoolName={schoolName ?? "School"}
+                studentName={reportLearner.fullName}
+                className={report.className}
+                createdAt={`${today}T00:00:00Z`}
+                subjects={reportSubjects}
+                teacherRemarks={`Average: ${
+                  reportLearner.averagePercentage === null
+                    ? "—"
+                    : `${reportLearner.averagePercentage}%`
+                }. ${reportLearner.assessmentsTaken} assessment(s) recorded.`}
+              />
             </CardBody>
           </Card>
         ) : null}

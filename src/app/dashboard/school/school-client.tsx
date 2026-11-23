@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 
 import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
@@ -11,6 +12,8 @@ import { TextField } from "@/components/ui/form";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { parseSchoolProfileUpdateInput } from "@/lib/administration/requests";
 import type { SchoolProfile } from "@/lib/administration/types";
+import type { ClassSummary } from "@/lib/enrolment/types";
+import { roleLabel } from "@/lib/staff/roles";
 import { AssessmentModeToggle } from "./assessment-mode-toggle";
 
 const NETWORK_MESSAGE =
@@ -72,15 +75,19 @@ async function getJson<T>(
 }
 
 export function SchoolClient({
+  role,
   canManageSchool,
   canManageSubjects,
   canManageGrading,
+  canReadClasses,
 }: {
+  readonly role: string;
   readonly canManageSchool: boolean;
   readonly canReadAcademic: boolean;
   readonly canManageAcademic: boolean;
   readonly canManageSubjects: boolean;
   readonly canManageGrading: boolean;
+  readonly canReadClasses: boolean;
 }) {
   const router = useRouter();
 
@@ -96,6 +103,34 @@ export function SchoolClient({
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileNotice, setProfileNotice] = useState<string | null>(null);
+  const [classes, setClasses] = useState<ClassSummary[] | null>(null);
+  const [classesError, setClassesError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!canReadClasses) {
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const result = await getJson<ClassSummary[]>(
+        "/api/staff/classes?includeInactive=true",
+        (payload) => (payload["classes"] as ClassSummary[] | undefined) ?? null,
+      );
+      if (cancelled) {
+        return;
+      }
+      if (result.ok) {
+        setClasses(result.value);
+        setClassesError(null);
+      } else {
+        setClasses(null);
+        setClassesError(result.message);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [canReadClasses]);
 
   useEffect(() => {
     if (!canManageSchool) {
@@ -338,6 +373,55 @@ export function SchoolClient({
           </CardBody>
         </Card>
       ) : null}
+
+      {canReadClasses ? (
+        <Card>
+          <CardHeader
+            title="Academic levels"
+            description="Classes are the school's academic levels. Active levels are available for enrolment; inactive levels are kept for historical records."
+          />
+          <CardBody className="stack stack--sm">
+            {classesError ? (
+              <Alert variant="error">{classesError}</Alert>
+            ) : classes === null ? (
+              <p className="muted" role="status">
+                Loading academic levels…
+              </p>
+            ) : classes.length === 0 ? (
+              <p className="muted">
+                No academic levels have been created yet.
+              </p>
+            ) : (
+              <ul className="record-list">
+                {classes.map((klass) => (
+                  <li className="record" key={klass.id}>
+                    <div className="record__main">
+                      <p className="record__title">{klass.name}</p>
+                    </div>
+                    <div className="record__actions">
+                      <Badge variant={klass.isActive ? "active" : "inactive"}>
+                        {klass.isActive ? "Active" : "Inactive"}
+                      </Badge>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardBody>
+        </Card>
+      ) : null}
+
+      <Card>
+        <CardHeader
+          title="Roles and permissions"
+          description="Authority comes from the permission catalogue, not from a role name. The configuration is fixed in this release; the Staff page shows the resulting access rights for your account."
+        />
+        <CardBody>
+          <p className="record__meta">
+            Your role: <strong>{roleLabel(role)}</strong>
+          </p>
+        </CardBody>
+      </Card>
 
       <AssessmentModeToggle
         canManage={canManageSchool}

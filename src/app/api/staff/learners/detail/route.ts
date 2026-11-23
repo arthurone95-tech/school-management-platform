@@ -4,6 +4,7 @@ import { parseLearnerIdInput } from "@/lib/enrolment/requests";
 import { getLearnerDetail } from "@/lib/server/enrolment";
 import { json } from "@/lib/server/http";
 import { resolveSchoolAccess } from "@/lib/server/school-access";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 /**
@@ -52,5 +53,22 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
-  return json({ ok: true, learner });
+  // Last sign-in lives in Supabase Auth, not in PostgREST. The secret key is
+  // used only after `getLearnerDetail` has confirmed the student belongs to the
+  // caller's school, and only for that student's already-resolved auth id. A
+  // missing key or account must never fail the whole record read. The auth id
+  // itself is not returned to the browser.
+  const { authUserId, ...profile } = learner;
+  let lastSignInAt: string | null = null;
+  if (authUserId) {
+    try {
+      const admin = createSupabaseAdminClient();
+      const { data } = await admin.auth.admin.getUserById(authUserId);
+      lastSignInAt = data.user?.last_sign_in_at ?? null;
+    } catch {
+      lastSignInAt = null;
+    }
+  }
+
+  return json({ ok: true, learner: { ...profile, lastSignInAt } });
 }

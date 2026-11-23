@@ -59,6 +59,7 @@ export interface ResultSheet {
 export interface ClassAssessmentRow {
   readonly assessmentId: string;
   readonly name: string;
+  readonly subjectName: string | null;
   readonly maxScore: number;
   readonly assessedOn: string;
   readonly averagePercentage: Percentage | null;

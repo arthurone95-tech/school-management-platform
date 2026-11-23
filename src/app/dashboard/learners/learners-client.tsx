@@ -9,6 +9,17 @@ import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { SelectField, TextField } from "@/components/ui/form";
+import type {
+  AssessmentSummary,
+  ResultSheet,
+} from "@/lib/academics/types";
+import {
+  attendanceStatusLabel,
+  formatCalendarDate,
+  formatDateTime,
+  formatMeasure,
+  portalStateLabel,
+} from "@/lib/domain/display";
 import {
   GENDERS,
   parseEnrolmentInput,
@@ -42,6 +53,7 @@ type ListState =
 
 /** Which inline editor is open for which student. */
 type RowEditor =
+  | { readonly learnerId: string; readonly mode: "profile" }
   | { readonly learnerId: string; readonly mode: "details" }
   | { readonly learnerId: string; readonly mode: "class" };
 
@@ -50,6 +62,17 @@ interface EnrolSuccess {
   readonly username: string;
   readonly className: string;
   readonly completedExisting: boolean;
+}
+
+type PrintTarget =
+  | { readonly kind: "list"; readonly key: number }
+  | { readonly kind: "profile"; readonly key: number }
+  | null;
+
+interface IssuedCredential {
+  readonly purpose: "activation" | "reset";
+  readonly code: string;
+  readonly expiresAt: string;
 }
 
 const GENDER_OPTIONS = [
@@ -103,6 +126,7 @@ async function fetchLearners(
   status: LearnerStatus | "all",
   search?: string,
   classId?: string,
+  gender: Gender | "all" = "all",
 ): Promise<ListState> {
   let response: Response;
   try {
@@ -111,6 +135,7 @@ async function fetchLearners(
     params.set("status", status);
     if (search && search.trim()) params.set("search", search.trim());
     if (classId) params.set("classId", classId);
+    if (gender !== "all") params.set("gender", gender);
     response = await fetch(`/api/staff/learners?${params.toString()}`, {
       headers: { Accept: "application/json" },
     });
@@ -181,6 +206,285 @@ function fullName(learner: LearnerSummary): string {
   return `${learner.firstName} ${learner.lastName}`.trim();
 }
 
+function ProfileLine({
+  label,
+  value,
+}: {
+  readonly label: string;
+  readonly value: string;
+}) {
+  return (
+    <p className="record__meta">
+      <strong>{label}:</strong> {value}
+    </p>
+  );
+}
+
+function LearnerPrintableProfile({
+  detail,
+  schoolName,
+}: {
+  readonly detail: LearnerDetail;
+  readonly schoolName: string | null;
+}) {
+  return (
+    <div className="terminal-report-card">
+      <h2>{fullName(detail)}</h2>
+      <p className="muted">
+        {schoolName ?? "School"} · Student profile and admission record
+      </p>
+      <div className="stack stack--sm">
+        <ProfileLine label="Registration number" value={detail.registrationNumber} />
+        <ProfileLine label="Internal student ID" value={detail.id} />
+        <ProfileLine label="Sign-in username" value={detail.username} />
+        <ProfileLine label="Gender" value={detail.gender} />
+        <ProfileLine
+          label="Date of birth"
+          value={formatCalendarDate(detail.dateOfBirth)}
+        />
+        <ProfileLine label="Residential address" value={detail.residentialAddress} />
+        <ProfileLine label="Guardian phone" value={detail.guardianPhone} />
+        <ProfileLine
+          label="Guardian email"
+          value={detail.guardianEmail ?? "Not recorded"}
+        />
+        <ProfileLine label="Current class" value={detail.className ?? "None"} />
+        <ProfileLine
+          label="Enrolment status"
+          value={detail.status === "active" ? "Enrolled" : "Inactive"}
+        />
+        <ProfileLine
+          label="Registered"
+          value={formatDateTime(detail.createdAt)}
+        />
+        <ProfileLine
+          label="Portal access"
+          value={portalStateLabel(detail.portalAccessState)}
+        />
+        <ProfileLine
+          label="Last sign-in"
+          value={formatDateTime(detail.lastSignInAt)}
+        />
+      </div>
+
+      <h3>Class history</h3>
+      {detail.placementHistory.length === 0 ? (
+        <p className="muted">No class history recorded.</p>
+      ) : (
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Class</th>
+                <th>From</th>
+                <th>To</th>
+              </tr>
+            </thead>
+            <tbody>
+              {detail.placementHistory.map((entry, index) => (
+                <tr key={`${entry.classId}-${entry.startedAt}-${index}`}>
+                  <td>{entry.className}</td>
+                  <td>{formatDateTime(entry.startedAt)}</td>
+                  <td>
+                    {entry.isCurrent ? "Current" : formatDateTime(entry.endedAt)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <h3>Attendance history</h3>
+      {detail.attendanceHistory.length === 0 ? (
+        <p className="muted">No attendance records available.</p>
+      ) : (
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Subject</th>
+                <th>Status</th>
+                <th>Note</th>
+              </tr>
+            </thead>
+            <tbody>
+              {detail.attendanceHistory.map((entry, index) => (
+                <tr key={`${entry.sessionDate}-${index}`}>
+                  <td>{formatCalendarDate(entry.sessionDate)}</td>
+                  <td>{entry.subjectName ?? "Class session"}</td>
+                  <td>{attendanceStatusLabel(entry.status)}</td>
+                  <td>{entry.note ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <h3>Assessment results</h3>
+      {detail.results.length === 0 ? (
+        <p className="muted">No recorded marks available.</p>
+      ) : (
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Assessment</th>
+                <th>Date</th>
+                <th>Score</th>
+                <th>Percentage</th>
+              </tr>
+            </thead>
+            <tbody>
+              {detail.results.map((result, index) => (
+                <tr key={`${result.assessmentName}-${result.assessedOn}-${index}`}>
+                  <td>
+                    {result.assessmentName}
+                    {result.subjectName ? ` · ${result.subjectName}` : ""}
+                  </td>
+                  <td>{formatCalendarDate(result.assessedOn)}</td>
+                  <td>
+                    {formatMeasure(result.score)} / {formatMeasure(result.maxScore)}
+                  </td>
+                  <td>{formatMeasure(result.percentage)}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LearnerPrintableList({
+  learners,
+  schoolName,
+}: {
+  readonly learners: readonly LearnerSummary[];
+  readonly schoolName: string | null;
+}) {
+  return (
+    <div className="terminal-report-card">
+      <h2>Student list</h2>
+      <p className="muted">{schoolName ?? "School"}</p>
+      <div className="table-wrap">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Registration number</th>
+              <th>Class</th>
+              <th>Gender</th>
+              <th>Status</th>
+              <th>Username</th>
+            </tr>
+          </thead>
+          <tbody>
+            {learners.map((learner) => (
+              <tr key={learner.id}>
+                <td>{fullName(learner)}</td>
+                <td>{learner.registrationNumber}</td>
+                <td>{learner.className ?? "No class"}</td>
+                <td>{learner.gender}</td>
+                <td>{learner.status}</td>
+                <td>{learner.username}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+interface HistoryRow {
+  readonly assessmentId: string;
+  readonly name: string;
+  readonly className: string;
+  readonly subjectName: string | null;
+  readonly assessedOn: string;
+  readonly score: number | null;
+  readonly maxScore: number;
+  readonly percentage: number | null;
+  readonly grade: string | null;
+}
+
+type HistoryState =
+  | { readonly kind: "loading" }
+  | { readonly kind: "ready"; readonly rows: readonly HistoryRow[] }
+  | { readonly kind: "error"; readonly message: string };
+
+/** Reads a learner's recent marks through the existing assessment APIs. */
+async function fetchAcademicHistory(learnerId: string): Promise<HistoryState> {
+  let response: Response;
+  try {
+    response = await fetch("/api/staff/assessments", {
+      headers: { Accept: "application/json" },
+    });
+  } catch {
+    return { kind: "error", message: NETWORK_MESSAGE };
+  }
+  const payload = (await response.json().catch(() => ({}))) as {
+    readonly ok?: boolean;
+    readonly error?: string;
+    readonly assessments?: AssessmentSummary[];
+  };
+  if (!response.ok || payload.ok !== true || !payload.assessments) {
+    return {
+      kind: "error",
+      message: payload.error ?? "The assessment history could not be loaded.",
+    };
+  }
+
+  const recent = [...payload.assessments]
+    .sort((a, b) => (a.assessedOn < b.assessedOn ? 1 : a.assessedOn > b.assessedOn ? -1 : 0))
+    .slice(0, 20);
+  const rows: HistoryRow[] = [];
+
+  for (const assessment of recent) {
+    let sheetResponse: Response;
+    try {
+      sheetResponse = await fetch(
+        `/api/staff/results?assessmentId=${encodeURIComponent(assessment.id)}`,
+        { headers: { Accept: "application/json" } },
+      );
+    } catch {
+      return { kind: "error", message: NETWORK_MESSAGE };
+    }
+    const sheetPayload = (await sheetResponse.json().catch(() => ({}))) as {
+      readonly ok?: boolean;
+      readonly error?: string;
+      readonly sheet?: ResultSheet;
+    };
+    if (!sheetResponse.ok || sheetPayload.ok !== true || !sheetPayload.sheet) {
+      return {
+        kind: "error",
+        message: sheetPayload.error ?? "The assessment history could not be loaded.",
+      };
+    }
+    const entry = sheetPayload.sheet.entries.find(
+      (item) => item.learnerId === learnerId,
+    );
+    if (!entry) continue;
+    rows.push({
+      assessmentId: assessment.id,
+      name: assessment.name,
+      className: assessment.className,
+      subjectName: assessment.subjectName,
+      assessedOn: assessment.assessedOn,
+      score: entry.score,
+      maxScore: assessment.maxScore,
+      percentage: entry.percentage,
+      grade: entry.grade?.label ?? null,
+    });
+  }
+
+  return { kind: "ready", rows };
+}
+
 export function LearnersClient({
   email,
   role,
@@ -190,6 +494,8 @@ export function LearnersClient({
   canCorrect,
   canChangePlacement,
   canManageClasses,
+  canReadHistory,
+  canPortalManage,
 }: {
   readonly email: string;
   readonly role: string;
@@ -199,6 +505,8 @@ export function LearnersClient({
   readonly canCorrect: boolean;
   readonly canChangePlacement: boolean;
   readonly canManageClasses: boolean;
+  readonly canReadHistory: boolean;
+  readonly canPortalManage: boolean;
 }) {
   const router = useRouter();
 
@@ -211,9 +519,11 @@ export function LearnersClient({
   const [searchInput, setSearchInput] = useState("");
   const [classFilter, setClassFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<LearnerStatus | "all">("all");
+  const [genderFilter, setGenderFilter] = useState<Gender | "all">("all");
   const [appliedSearch, setAppliedSearch] = useState("");
   const [appliedClass, setAppliedClass] = useState("");
   const [appliedStatus, setAppliedStatus] = useState<LearnerStatus | "all">("all");
+  const [appliedGender, setAppliedGender] = useState<Gender | "all">("all");
 
   const [form, setForm] = useState(EMPTY_FORM);
   const [formError, setFormError] = useState<string | null>(null);
@@ -234,8 +544,20 @@ export function LearnersClient({
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
   const [rowNotice, setRowNotice] = useState<string | null>(null);
+  const [printTarget, setPrintTarget] = useState<PrintTarget>(null);
+  const [printDetail, setPrintDetail] = useState<LearnerDetail | null>(null);
+  const [credential, setCredential] = useState<IssuedCredential | null>(null);
+  const [credentialError, setCredentialError] = useState<string | null>(null);
+  const [historyLearnerId, setHistoryLearnerId] = useState<string | null>(null);
+  const [historyState, setHistoryState] = useState<HistoryState>({
+    kind: "loading",
+  });
 
   const canManageRows = canCorrect || canChangePlacement;
+  const historyLearner =
+    historyLearnerId && listState.kind === "ready"
+      ? listState.learners.find((item) => item.id === historyLearnerId)
+      : undefined;
 
   useEffect(() => {
     if (!canEnrol) {
@@ -259,7 +581,13 @@ export function LearnersClient({
     }
     let cancelled = false;
     void (async () => {
-      const next = await fetchLearners(page, appliedStatus, appliedSearch, appliedClass);
+      const next = await fetchLearners(
+        page,
+        appliedStatus,
+        appliedSearch,
+        appliedClass,
+        appliedGender,
+      );
       if (!cancelled) {
         setListState(next);
       }
@@ -267,7 +595,25 @@ export function LearnersClient({
     return () => {
       cancelled = true;
     };
-  }, [canRead, page, appliedStatus, reloadKey, appliedSearch, appliedClass]);
+  }, [
+    canRead,
+    page,
+    appliedStatus,
+    reloadKey,
+    appliedSearch,
+    appliedClass,
+    appliedGender,
+  ]);
+
+  function requestPrint(kind: "list" | "profile") {
+    setPrintTarget({ kind, key: Date.now() });
+    // The print-only card is committed on the next render. Defer the browser
+    // dialog so it is included, then remove the card from the normal UI.
+    window.setTimeout(() => {
+      window.print();
+      setPrintTarget(null);
+    }, 0);
+  }
 
   function reloadList() {
     setListState({ kind: "loading" });
@@ -278,6 +624,14 @@ export function LearnersClient({
     setEditor(null);
     setRowError(null);
     setConfirmingId(null);
+  }
+
+  async function openHistory(learner: LearnerSummary) {
+    closeEditor();
+    setHistoryLearnerId(learner.id);
+    setHistoryState({ kind: "loading" });
+    const next = await fetchAcademicHistory(learner.id);
+    setHistoryState(next);
   }
 
   function goToPage(next: number) {
@@ -349,12 +703,14 @@ export function LearnersClient({
     }
   }
 
-  /** Opens the correction editor and loads the full record on demand. */
-  async function openDetails(learner: LearnerSummary) {
+  /** Loads the full record on demand for either the profile or correction view. */
+  async function loadDetailFor(learner: LearnerSummary, mode: "profile" | "details") {
     setRowNotice(null);
     setRowError(null);
     setConfirmingId(null);
-    setEditor({ learnerId: learner.id, mode: "details" });
+    setCredential(null);
+    setCredentialError(null);
+    setEditor({ learnerId: learner.id, mode });
     setDetailState({ kind: "loading" });
 
     const result = await fetchDetail(learner.id);
@@ -376,6 +732,61 @@ export function LearnersClient({
       guardianEmail: detail.guardianEmail ?? "",
       classId: detail.classId ?? "",
     });
+  }
+
+  function openProfile(learner: LearnerSummary) {
+    void loadDetailFor(learner, "profile");
+  }
+
+  function openDetails(learner: LearnerSummary) {
+    void loadDetailFor(learner, "details");
+  }
+
+  async function issueCredential(purpose: "activation" | "reset") {
+    if (detailState.kind !== "ready") {
+      return;
+    }
+    setCredential(null);
+    setCredentialError(null);
+    setRowBusyId(detailState.detail.id);
+    try {
+      const response = await fetch("/api/admin/portal-credentials", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          learnerId: detailState.detail.id,
+          purpose,
+        }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as {
+        readonly ok?: boolean;
+        readonly error?: string;
+        readonly code?: string;
+        readonly expiresAt?: string;
+        readonly purpose?: "activation" | "reset";
+      };
+      if (
+        !response.ok ||
+        payload.ok !== true ||
+        typeof payload.code !== "string" ||
+        typeof payload.expiresAt !== "string" ||
+        !payload.purpose
+      ) {
+        setCredentialError(
+          payload.error ?? "The credential could not be issued.",
+        );
+        return;
+      }
+      setCredential({
+        purpose: payload.purpose,
+        code: payload.code,
+        expiresAt: payload.expiresAt,
+      });
+    } catch {
+      setCredentialError(NETWORK_MESSAGE);
+    } finally {
+      setRowBusyId(null);
+    }
   }
 
   function openClassChange(learner: LearnerSummary) {
@@ -741,14 +1152,24 @@ export function LearnersClient({
                     : "The students registered in your school."
               }
               actions={
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={reloadList}
-                  loading={listState.kind === "loading"}
-                >
-                  Refresh
-                </Button>
+                <div className="cluster">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={reloadList}
+                    loading={listState.kind === "loading"}
+                  >
+                    Refresh
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={listState.kind !== "ready" || listState.learners.length === 0}
+                    onClick={() => requestPrint("list")}
+                  >
+                    Print list
+                  </Button>
+                </div>
               }
             />
             <CardBody className="stack stack--sm">
@@ -757,7 +1178,7 @@ export function LearnersClient({
                   label="Search students"
                   name="student-search"
                   type="search"
-                  placeholder="Name, username or registration number"
+                  placeholder="Name, username, registration no. or student ID"
                   value={searchInput}
                   onChange={(event) => setSearchInput(event.target.value)}
                 />
@@ -772,6 +1193,21 @@ export function LearnersClient({
                   value={statusFilter}
                   onChange={(event) =>
                     setStatusFilter(event.target.value as LearnerStatus | "all")
+                  }
+                />
+                <SelectField
+                  label="Gender"
+                  name="gender-filter"
+                  options={[
+                    { value: "all", label: "All genders" },
+                    ...GENDERS.map((gender) => ({
+                      value: gender,
+                      label: gender.charAt(0).toUpperCase() + gender.slice(1),
+                    })),
+                  ]}
+                  value={genderFilter}
+                  onChange={(event) =>
+                    setGenderFilter(event.target.value as Gender | "all")
                   }
                 />
                 <SelectField
@@ -796,12 +1232,16 @@ export function LearnersClient({
                     setAppliedSearch(searchInput);
                     setAppliedClass(classFilter);
                     setAppliedStatus(statusFilter);
+                    setAppliedGender(genderFilter);
                     setPage(1);
                   }}
                 >
                   Apply Filters
                 </Button>
-                {(appliedSearch || appliedClass || appliedStatus !== "all") ? (
+                {(appliedSearch ||
+                  appliedClass ||
+                  appliedStatus !== "all" ||
+                  appliedGender !== "all") ? (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -809,9 +1249,11 @@ export function LearnersClient({
                       setSearchInput("");
                       setClassFilter("");
                       setStatusFilter("all");
+                      setGenderFilter("all");
                       setAppliedSearch("");
                       setAppliedClass("");
                       setAppliedStatus("all");
+                      setAppliedGender("all");
                       setPage(1);
                     }}
                   >
@@ -854,7 +1296,159 @@ export function LearnersClient({
                     return (
                       <li className="record" key={learner.id}>
                         <div className="record__main">
-                          {editing?.mode === "details" ? (
+                          {editing?.mode === "profile" ? (
+                            <div className="stack stack--sm">
+                              {detailState.kind === "loading" ? (
+                                <p className="muted" role="status">
+                                  Loading {fullName(learner)}…
+                                </p>
+                              ) : detailState.kind === "error" ? (
+                                <Alert variant="error">
+                                  {detailState.message}
+                                </Alert>
+                              ) : (
+                                <>
+                                  <p className="record__title">
+                                    {fullName(detailState.detail)}
+                                  </p>
+                                  <ProfileLine
+                                    label="Internal student ID"
+                                    value={detailState.detail.id}
+                                  />
+                                  <ProfileLine
+                                    label="Registered"
+                                    value={formatDateTime(
+                                      detailState.detail.createdAt,
+                                    )}
+                                  />
+                                  <ProfileLine
+                                    label="Portal access"
+                                    value={portalStateLabel(
+                                      detailState.detail.portalAccessState,
+                                    )}
+                                  />
+                                  <ProfileLine
+                                    label="Last sign-in"
+                                    value={formatDateTime(
+                                      detailState.detail.lastSignInAt,
+                                    )}
+                                  />
+                                  <p className="record__meta">
+                                    <strong>Class history:</strong>{" "}
+                                    {detailState.detail.placementHistory.length ===
+                                    0
+                                      ? "None recorded"
+                                      : detailState.detail.placementHistory
+                                          .map(
+                                            (entry) =>
+                                              `${entry.className} (${formatDateTime(entry.startedAt)}${entry.isCurrent ? ", current" : ""})`,
+                                          )
+                                          .join(" · ")}
+                                  </p>
+                                  <p className="record__meta">
+                                    <strong>Recent attendance:</strong>{" "}
+                                    {detailState.detail.attendanceHistory.length ===
+                                    0
+                                      ? "None available"
+                                      : detailState.detail.attendanceHistory
+                                          .map(
+                                            (entry) =>
+                                              `${formatCalendarDate(entry.sessionDate)}: ${attendanceStatusLabel(entry.status)}`,
+                                          )
+                                          .join(" · ")}
+                                  </p>
+                                  <p className="record__meta">
+                                    <strong>Recorded marks:</strong>{" "}
+                                    {detailState.detail.results.length === 0
+                                      ? "None available"
+                                      : detailState.detail.results
+                                          .map(
+                                            (result) =>
+                                              `${result.assessmentName} ${formatMeasure(result.score)}/${formatMeasure(result.maxScore)}`,
+                                          )
+                                          .join(" · ")}
+                                  </p>
+
+                                  {canPortalManage ? (
+                                    <div className="stack stack--sm">
+                                      <p className="muted">
+                                        A code is shown once. Share it directly
+                                        with the student; the platform never
+                                        stores or emails the raw value.
+                                      </p>
+                                      <div className="cluster">
+                                        <Button
+                                          variant="secondary"
+                                          size="sm"
+                                          loading={
+                                            rowBusyId === detailState.detail.id
+                                          }
+                                          onClick={() =>
+                                            void issueCredential("activation")
+                                          }
+                                        >
+                                          Issue activation code
+                                        </Button>
+                                        <Button
+                                          variant="secondary"
+                                          size="sm"
+                                          loading={
+                                            rowBusyId === detailState.detail.id
+                                          }
+                                          onClick={() =>
+                                            void issueCredential("reset")
+                                          }
+                                        >
+                                          Issue reset code
+                                        </Button>
+                                      </div>
+                                      {credential ? (
+                                        <Alert variant="success">
+                                          {credential.purpose === "activation"
+                                            ? "Activation"
+                                            : "Reset"}{" "}
+                                          code:{" "}
+                                          <strong className="mono">
+                                            {credential.code}
+                                          </strong>
+                                          . Expires{" "}
+                                          {formatDateTime(
+                                            credential.expiresAt,
+                                          )}
+                                          .
+                                        </Alert>
+                                      ) : null}
+                                      {credentialError ? (
+                                        <Alert variant="error">
+                                          {credentialError}
+                                        </Alert>
+                                      ) : null}
+                                    </div>
+                                  ) : null}
+
+                                  <div className="cluster">
+                                    <Button
+                                      variant="secondary"
+                                      size="sm"
+                                      onClick={() => {
+                                        setPrintDetail(detailState.detail);
+                                        requestPrint("profile");
+                                      }}
+                                    >
+                                      Print profile
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={closeEditor}
+                                    >
+                                      Close
+                                    </Button>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          ) : editing?.mode === "details" ? (
                             <div className="stack stack--sm">
                               {detailState.kind === "loading" ? (
                                 <p className="muted" role="status">
@@ -1061,8 +1655,17 @@ export function LearnersClient({
                             </div>
                           ) : null}
                         </div>
-                        {canManageRows && !editing ? (
+                        {!editing ? (
                           <div className="record__actions">
+                            {canRead ? (
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => openProfile(learner)}
+                              >
+                                Profile
+                              </Button>
+                            ) : null}
                             {canCorrect ? (
                               <Button
                                 variant="secondary"
@@ -1130,6 +1733,17 @@ export function LearnersClient({
                             ) : null}
                           </div>
                         ) : null}
+                        {canReadHistory && !editing ? (
+                          <div className="record__actions">
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => void openHistory(learner)}
+                            >
+                              Academic history
+                            </Button>
+                          </div>
+                        ) : null}
                       </li>
                     );
                   })}
@@ -1163,6 +1777,72 @@ export function LearnersClient({
             )}
           </Card>
         )}
+
+        {historyLearner ? (
+          <Card>
+            <CardHeader
+              title={`Academic history — ${fullName(historyLearner)}`}
+              description="Recent recorded assessments, newest first. Marks are read from the same assessment records used by the Results page."
+              actions={
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setHistoryLearnerId(null)}
+                >
+                  Close
+                </Button>
+              }
+            />
+            <CardBody className="stack stack--sm">
+              {historyState.kind === "loading" ? (
+                <p className="muted" role="status">Loading academic history…</p>
+              ) : historyState.kind === "error" ? (
+                <Alert variant="error">{historyState.message}</Alert>
+              ) : historyState.rows.length === 0 ? (
+                <Alert variant="info">
+                  No recorded marks are available for this learner yet.
+                </Alert>
+              ) : (
+                <ul className="record-list">
+                  {historyState.rows.map((row) => (
+                    <li key={row.assessmentId} className="record">
+                      <div className="record__main">
+                        <p className="record__title">
+                          {row.name}
+                          {row.subjectName ? ` — ${row.subjectName}` : ""}
+                        </p>
+                        <p className="record__meta">
+                          {row.assessedOn} · {row.className} ·{" "}
+                          {row.score === null
+                            ? "not marked"
+                            : `${row.score}/${row.maxScore}`}
+                        </p>
+                      </div>
+                      <div className="record__actions">
+                        {row.percentage !== null ? (
+                          <span className="badge">{row.percentage}%</span>
+                        ) : null}
+                        {row.grade ? (
+                          <span className="badge badge--active">{row.grade}</span>
+                        ) : null}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardBody>
+          </Card>
+        ) : null}
+
+        {printTarget?.kind === "list" && listState.kind === "ready" ? (
+          <LearnerPrintableList
+            learners={listState.learners}
+            schoolName={schoolName}
+          />
+        ) : null}
+        {printTarget?.kind === "profile" && printDetail ? (
+          <LearnerPrintableProfile detail={printDetail} schoolName={schoolName} />
+        ) : null}
       </div>
     </>
   );

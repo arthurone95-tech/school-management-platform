@@ -17,9 +17,10 @@ export async function AcademicsGate() {
     redirect("/sign-in");
   }
 
-  const [canReadAcademic, canManageAcademic] = await Promise.all([
+  const [canReadAcademic, canManageAcademic, canExportReport] = await Promise.all([
     context.hasPermission("academic.read"),
     context.hasPermission("academic.manage"),
+    context.hasPermission("report.export"),
   ]);
 
   if (!canReadAcademic && !canManageAcademic) {
@@ -30,6 +31,7 @@ export async function AcademicsGate() {
     <AcademicsClient
       canReadAcademic={canReadAcademic}
       canManageAcademic={canManageAcademic}
+      canExportReport={canExportReport}
     />
   );
 }

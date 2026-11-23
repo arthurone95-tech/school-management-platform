@@ -32,21 +32,25 @@ export async function SchoolGate() {
     canManageAcademic,
     canManageSubjects,
     canManageGrading,
+    canReadClasses,
   ] = await Promise.all([
     context.hasPermission("school.manage"),
     context.hasPermission("academic.read"),
     context.hasPermission("academic.manage"),
     context.hasPermission("subject.manage"),
     context.hasPermission("grade.manage"),
+    context.hasPermission("class.read"),
   ]);
 
   return (
     <SchoolClient
+      role={context.role}
       canManageSchool={canManageSchool}
       canReadAcademic={canReadAcademic}
       canManageAcademic={canManageAcademic}
       canManageSubjects={canManageSubjects}
       canManageGrading={canManageGrading}
+      canReadClasses={canReadClasses}
     />
   );
 }

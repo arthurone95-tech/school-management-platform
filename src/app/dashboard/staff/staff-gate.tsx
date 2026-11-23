@@ -30,12 +30,14 @@ export async function StaffGate() {
     canViewSubjects,
     canViewStudents,
     canViewAcademic,
+    canReadAudit,
   ] = await Promise.all([
     context.hasPermission("member.manage"),
     context.hasPermission("class.read"),
     context.hasPermission("subject.read"),
     context.hasPermission("learner.read"),
     context.hasPermission("academic.read"),
+    context.hasPermission("audit.read"),
   ]);
 
   return (
@@ -48,6 +50,7 @@ export async function StaffGate() {
       canViewSubjects={canViewSubjects}
       canViewStudents={canViewStudents}
       canViewAcademic={canViewAcademic}
+      canReadAudit={canReadAudit}
     />
   );
 }

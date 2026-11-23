@@ -23,6 +23,7 @@ export function ResultsShell({
   canManageAssessments,
   canRecordResults,
   canReadReport,
+  canExportReport,
 }: {
   readonly assessmentMode: AssessmentMode;
   readonly email: string;
@@ -32,6 +33,7 @@ export function ResultsShell({
   readonly canManageAssessments: boolean;
   readonly canRecordResults: boolean;
   readonly canReadReport: boolean;
+  readonly canExportReport: boolean;
 }) {
   if (assessmentMode === "ges_standard") {
     return (
@@ -51,6 +53,7 @@ export function ResultsShell({
       canManageAssessments={canManageAssessments}
       canRecordResults={canRecordResults}
       canReadReport={canReadReport}
+      canExportReport={canExportReport}
     />
   );
 }

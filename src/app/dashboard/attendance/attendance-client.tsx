@@ -115,6 +115,22 @@ async function postJson(
 
 type Marks = Record<string, { status: AttendanceStatus; note: string }>;
 
+function shiftIsoDate(value: string, days: number): string {
+  const parsed = Date.parse(`${value}T00:00:00Z`);
+  return new Date(parsed + days * 86_400_000).toISOString().slice(0, 10);
+}
+
+function startOfIsoWeek(value: string): string {
+  const parsed = Date.parse(`${value}T00:00:00Z`);
+  const day = new Date(parsed).getUTCDay();
+  const daysSinceMonday = day === 0 ? 6 : day - 1;
+  return shiftIsoDate(value, -daysSinceMonday);
+}
+
+function startOfIsoMonth(value: string): string {
+  return `${value.slice(0, 7)}-01`;
+}
+
 export function AttendanceClient({
   email,
   role,
@@ -155,6 +171,8 @@ export function AttendanceClient({
   const [reportError, setReportError] = useState<string | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
   const [rosterSearch, setRosterSearch] = useState("");
+  const [reportLearnerSearch, setReportLearnerSearch] = useState("");
+  const [selectedReportLearnerId, setSelectedReportLearnerId] = useState("");
 
   const [signingOut, setSigningOut] = useState(false);
 
@@ -336,6 +354,8 @@ export function AttendanceClient({
     event.preventDefault();
     setReportError(null);
     setReport(null);
+    setReportLearnerSearch("");
+    setSelectedReportLearnerId("");
 
     const parsed = parseReportQuery(
       {
@@ -368,6 +388,10 @@ export function AttendanceClient({
     }
     setReport(result.value);
   }
+
+  const selectedReportLearner = report?.learners.find(
+    (learner) => learner.learnerId === selectedReportLearnerId,
+  );
 
   return (
     <>
@@ -513,8 +537,22 @@ export function AttendanceClient({
                       ? `${register.session.sessionDate} · change it and save`
                       : `${register.session.sessionDate} · closed for teachers. Ask an administrator to change it.`
                   }
+                  actions={
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => window.print()}
+                    >
+                      Print register
+                    </Button>
+                  }
                 />
-                <CardBody>
+                <CardBody className="stack stack--sm">
+                  <Alert variant="info">
+                    A teacher may correct today&rsquo;s register. Earlier dates
+                    need an administrator with report permission. Corrections are
+                    written to the school&rsquo;s audit trail.
+                  </Alert>
                   {register.roster.length === 0 ? (
                     <Alert variant="info">
                       No learners are currently in this class, so there is
@@ -637,7 +675,18 @@ export function AttendanceClient({
           <Card>
             <CardHeader
               title="Class report"
-              description="Attendance totals for one class over a date range."
+              description="Attendance totals for one class over a date range. Percentage thresholds and repeated-absentee rules are not defined yet, so raw counts are shown."
+              actions={
+                report ? (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => window.print()}
+                  >
+                    Print report
+                  </Button>
+                ) : null
+              }
             />
             <CardBody>
               <form className="stack" onSubmit={buildReport}>
@@ -684,6 +733,38 @@ export function AttendanceClient({
                     />
                   </div>
                 </div>
+                <div className="cluster cluster--tight">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      setReportFrom(today);
+                      setReportTo(today);
+                    }}
+                  >
+                    Today
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      setReportFrom(startOfIsoWeek(today));
+                      setReportTo(today);
+                    }}
+                  >
+                    This week
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      setReportFrom(startOfIsoMonth(today));
+                      setReportTo(today);
+                    }}
+                  >
+                    This month
+                  </Button>
+                </div>
                 <Button
                   type="submit"
                   variant="primary"
@@ -725,32 +806,92 @@ export function AttendanceClient({
                       No learners are currently in this class.
                     </Alert>
                   ) : (
-                    /* A list rather than a wide table: on a phone the columns
-                       would scroll sideways, and each learner is one row of
-                       counts either way (docs/UI_UX_DOCUMENTATION.md 11). */
-                    <ul className="record-list">
-                      {report.learners.map((learner) => (
-                        <li key={learner.learnerId} className="record">
-                          <div className="record__main">
-                            <p className="record__title">{learner.fullName}</p>
-                            <p className="record__meta mono">
-                              {learner.registrationNumber}
-                            </p>
-                            <ul className="cluster">
-                              {ATTENDANCE_STATUSES.map((status) => (
-                                <li key={status} className="badge">
-                                  {ATTENDANCE_STATUS_LABELS[status]}:{" "}
-                                  {learner[status]}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
+                    <div className="stack stack--sm">
+                      <TextField
+                        label="Find a learner"
+                        name="report-learner-search"
+                        type="search"
+                        placeholder="Name or registration number"
+                        value={reportLearnerSearch}
+                        onChange={(event) =>
+                          setReportLearnerSearch(event.target.value)
+                        }
+                      />
+                      {/* A list rather than a wide table: on a phone the columns
+                          would scroll sideways, and each learner is one row of
+                          counts either way (docs/UI_UX_DOCUMENTATION.md 11). */}
+                      <ul className="record-list">
+                        {report.learners
+                          .filter((learner) =>
+                            reportLearnerSearch.trim() === "" ||
+                            learner.fullName
+                              .toLowerCase()
+                              .includes(reportLearnerSearch.toLowerCase()) ||
+                            learner.registrationNumber
+                              .toLowerCase()
+                              .includes(reportLearnerSearch.toLowerCase()),
+                          )
+                          .map((learner) => (
+                            <li key={learner.learnerId} className="record">
+                              <div className="record__main">
+                                <p className="record__title">{learner.fullName}</p>
+                                <p className="record__meta mono">
+                                  {learner.registrationNumber}
+                                </p>
+                                <ul className="cluster">
+                                  {ATTENDANCE_STATUSES.map((status) => (
+                                    <li key={status} className="badge">
+                                      {ATTENDANCE_STATUS_LABELS[status]}:{" "}
+                                      {learner[status]}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                              <div className="record__actions">
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  onClick={() =>
+                                    setSelectedReportLearnerId(learner.learnerId)
+                                  }
+                                >
+                                  View learner
+                                </Button>
+                              </div>
+                            </li>
+                          ))}
+                      </ul>
+                    </div>
                   )}
                 </div>
               ) : null}
+            </CardBody>
+          </Card>
+        ) : null}
+
+        {selectedReportLearner ? (
+          <Card>
+            <CardHeader
+              title={`Individual attendance — ${selectedReportLearner.fullName}`}
+              description={`${selectedReportLearner.registrationNumber} · raw counts for the selected date range`}
+              actions={
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setSelectedReportLearnerId("")}
+                >
+                  Close
+                </Button>
+              }
+            />
+            <CardBody>
+              <ul className="cluster">
+                {ATTENDANCE_STATUSES.map((status) => (
+                  <li key={status} className="badge">
+                    {ATTENDANCE_STATUS_LABELS[status]}: {selectedReportLearner[status]}
+                  </li>
+                ))}
+              </ul>
             </CardBody>
           </Card>
         ) : null}

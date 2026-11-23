@@ -16,12 +16,8 @@ Method: each item in the source document was checked against the code, API route
 
 ### A. Dashboard and School Overview
 
-- (Partial) Overall school statistics — only a small set of metrics is shown
-- (Not built) Male and female student counts
-- (Partial) Active and inactive student counts
-- (Not built) Enrolment by class and year group
-- (Not built) Upcoming examinations and assessments
-- (Not built) Upcoming school events
+- (Partial) Overall school statistics — a bounded set of metrics and overviews is shown
+- (Not built) Enrolment by year group — classes have no year-group field
 - (Not built) Pending administrative tasks
 - (Partial) Academic performance summaries
 - (Not built) Compare academic performance across classes
@@ -30,61 +26,37 @@ Method: each item in the source document was checked against the code, API route
 
 ### B. Student Management
 
-- (Partial) Complete student profiles
-- (Not built) Registration date and time recorded per student
-- (Partial) Unique student identification numbers (system internal ID)
+- (Partial) Complete student profiles — core fields, histories and credentials are shown; photographs, multiple guardians and health details are not
 - (Not built) Upload passport photograph
 - (Not built) Multiple parents/guardians per student
 - (Not built) Previous schools
-- (Partial) Academic histories
-- (Partial) Attendance histories
-- (Partial) Assessment/exam results on the student record
 - (Not built) Health or emergency statement
-- (Not built) Print student profiles and admission reports
-- (Not built) Print student lists
-- (Partial) Search/filter by name, ID, class, gender and status
 
 ### C. Teacher and Staff Management
 
 - (Partial) Register teachers and staff (invitation-based; no full staff record form)
 - (Not built) Staff identification numbers
-- (Partial) Registration date and time recorded per staff member
 - (Not built) Edit staff profiles
 - (Not built) Upload staff photograph
 - (Not built) Qualifications
 - (Not built) Transfer between departments
 - (Not built) View teacher timetables
-- (Not built) Print staff lists
 - (Not built) Export staff information
 
 ### E. Academics — Academic Year and Term Management
 
-- (Partial) Create and edit academic years
-- (Partial) Create terms
-- (Partial) Set opening and closing dates
-- (Partial) Vacation periods
-- (Partial) Activate the current year and term
-- (Partial) Close completed terms
-- (Partial) Historical records
-- (Partial) Academic calendars
-- (Partial) Student academic histories
-- (Partial) Schedule school activities
+Implemented — see `docs/ROLES_IMPLEMENTED.md`. No pending items remain in this section.
 
 ### E2. Examination Management
 
-- (Partial) Assign exam supervisors
 - (Not built) Monitor examination preparation
-- (Partial) Monitor marks submission
-- (Partial) Track completion
 - (Not built) Generate examination reports
 - (Not built) Print timetables and registers
-- (Partial) Publish approved results
+- (Partial) Publish approved results — approval workflow requires a product decision
 
 ### F. Assessment and Grading Management
 
-- (Partial) Compulsory and optional subjects
-- (Partial) Create and edit class names in the custom framework
-- (Partial) Assessment components and weightings
+- (Partial) Assessment components and weightings — components and default weights are shown, but changing weighting rules needs an approved grading decision
 - (Not built) Class-specific grading rules
 - (Partial) Exam and continuous assessment structures
 - (Partial) Term result calculations
@@ -93,42 +65,31 @@ Method: each item in the source document was checked against the code, API route
 
 ### G. Results
 
-- (Not built) Approve/reject results
-- (Not built) Return results for correction
+- (Not built) Approve/reject results — workflow decision required
+- (Not built) Return results for correction — workflow decision required
 - (Partial) Authorize result changes with an audit trail
-- (Partial) Lock finalized results
-- (Partial) Generate report cards
+- (Partial) Lock finalized results — workflow decision required
 - (Not built) Subject performance reports
-- (Partial) Print/download results
 
 ### H. Attendance Management
 
-- (Partial) View daily attendance
-- (Partial) View attendance by class
-- (Not built) View attendance by individual student
 - (Not built) Teacher attendance
 - (Not built) Staff attendance
 - (Not built) Early departures
-- (Not built) Attendance percentages
-- (Not built) Repeated absenteeism detection
+- (Not built) Attendance percentages — formula decision required
+- (Not built) Repeated absenteeism detection — threshold decision required
 - (Partial) Daily, weekly and monthly reports
 - (Not built) Print attendance registers
-- (Partial) Correct attendance with authorization and audit
 
 ### I. Parent and Student Account Management
 
-- (Partial) Create student portal accounts
-- (Partial) Activation codes and invitation links
 - (Not built) Parent/guardian access — deferred under D-021
 - (Not built) Link parents to their children
-- (Partial) Secure credential generation
 - (Partial) Activate/deactivate portal accounts
-- (Partial) Password reset and recovery
-- (Partial) Activation status
-- (Not built) Last login information
+- (Partial) Password reset and recovery — staff-issued codes exist; self-service recovery is not built
 - (Not built) Disable compromised accounts
-- (Partial) Portal permissions
-- (Partial) Help users recover access
+- (Partial) Portal permissions — fixed catalogue, no configuration interface
+- (Partial) Help users recover access — staff-assisted only
 
 ### J. Communication and Announcements
 
@@ -151,15 +112,11 @@ Method: each item in the source document was checked against the code, API route
 
 ### M. Security and System Administration
 
-- (Partial) Staff permissions
-- (Partial) Specific access rights
-- (Partial) Activity logs
-- (Not built) Login histories
+- (Partial) Staff permissions — fixed catalogue; no configuration interface
+- (Partial) Login histories — last sign-in only; no full history view
 - (Not built) Suspicious activity detection
-- (Partial) Record of who created, edited or approved a change
 - (Not built) Revoke sessions
 - (Not built) Password recovery
-- (Partial) Audit log viewing (data is captured, but there is no viewer)
 - (Not built) Export permissions
 - (Not built) Backups and restore
 - (Not built) Security settings
@@ -172,18 +129,13 @@ Method: each item in the source document was checked against the code, API route
 
 - (Not built) Change password
 - (Not built) Account recovery
-- (Partial) Personal dashboard (teacher view is a placeholder)
-- (Partial) Assigned classes on the dashboard
-- (Partial) Assigned subjects on the dashboard
 - (Not built) Timetable
 - (Not built) Upcoming lessons
 - (Not built) Upcoming examinations
-- (Partial) Pending marking activities
 - (Not built) Pending result submissions
 - (Not built) School announcements
 - (Not built) Messages and notifications
 - (Not built) Daily teaching schedule
-- (Partial) Class attendance summaries
 
 ### B. Class Management
 
@@ -192,9 +144,7 @@ Method: each item in the source document was checked against the code, API route
 - (Not built) Student photographs
 - (Partial) Attendance histories where authorized
 - (Partial) Previous academic performance
-- (Partial) Class lists
 - (Not built) Download class lists
-- (Not built) Print class registers
 - (Not built) Identify students falling behind
 - (Not built) Learning support information
 
@@ -218,14 +168,12 @@ Method: each item in the source document was checked against the code, API route
 - (Not built) Notes and presentations
 - (Not built) Learning activities
 - (Not built) Homework creation from the teaching view
-- (Partial) Class exercises
 - (Not built) Revision materials
 - (Partial) Monitor lesson progress
 - (Not built) Teaching observations
 
 ### E. Assessment and Examination Management
 
-- (Partial) Create class exercises, assignments, quizzes and tests
 - (Not built) Prepare/upload examination questions
 - (Not built) Save draft marks
 - (Not built) Submit marks for approval
@@ -307,7 +255,7 @@ The portal is at the authentication-skeleton stage: sign-in and account activati
 - (Not built) View account information
 - (Partial) Log out securely — no portal sign-out control
 - (Partial) Access on mobile, tablet and desktop — auth screens are responsive, but no real workflow exists to test
-- (Partial) Register students and issue activation credentials without email — registration works, but no administrator interface issues the credentials
+- (Partial) Register students and issue activation credentials without email — staff can now issue codes from learner records; no email delivery exists
 
 ### B. Student Dashboard
 
@@ -440,8 +388,7 @@ The portal is at the authentication-skeleton stage: sign-in and account activati
 
 ### F. Events and Calendar
 
-- (Partial) School events — database table and API exist, but no usable interface
-- (Partial) Event creation, dates and times — API only
+- (Not built) Event start and end times — the table stores dates only
 - (Not built) Venues
 - (Not built) Participant assignment
 - (Not built) Invitations
@@ -524,7 +471,7 @@ The portal is at the authentication-skeleton stage: sign-in and account activati
 - (Not built) Automated backups
 - (Not built) Manual backup
 - (Not built) Restore
-- (Partial) Audit logs — captured in the database, but no viewer interface
+- (Partial) Audit logs — read-only viewer on the Staff page; no alerting or security monitoring
 - (Not verified) User access logs — no application sign-in audit event found
 - (Not built) IP restrictions
 - (Not verified) Two-factor authentication — no in-repo configuration or interface
@@ -542,7 +489,7 @@ The portal is at the authentication-skeleton stage: sign-in and account activati
 - **Resolved:** the sidebar now links to the implemented **Examinations** and **Grading** screens instead of labelling them "Coming soon".
 - **Resolved:** the dashboard's **Subjects** checklist item now links to Assessment settings instead of saying "Coming soon".
 - **Resolved:** the landing page no longer claims students can view results or print report cards in the portal. Student result viewing remains unbuilt.
-- **Accurate as "Coming soon":** the sidebar entries for **Accounts**, **Communication** and **Security**; none of these modules is built.
+- **Accurate as "Coming soon":** the sidebar entries for **Accounts**, **Communication** and **Security**; there is no standalone module for these areas. Security-related audit and access-rights views are available on the Staff page.
 - **Accurate as "Coming soon":** the landing page entries for **Fees and receipts** and **Announcements and SMS**.
 
 ---

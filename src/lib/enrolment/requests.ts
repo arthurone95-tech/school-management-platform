@@ -338,6 +338,17 @@ export function parseLearnerStatusFilter(raw: string | null): LearnerStatusFilte
   return raw === "inactive" ? "inactive" : "active";
 }
 
+/**
+ * Parses the optional `gender` filter for the learner list. An absent or
+ * unrecognised value means "all", so a hostile query cannot produce an
+ * unvalidated database predicate.
+ */
+export function parseLearnerGenderFilter(
+  raw: string | null,
+): Gender | "all" {
+  return raw !== null && isGender(raw) ? raw : "all";
+}
+
 export interface ClassCreateInput {
   readonly name: string;
 }

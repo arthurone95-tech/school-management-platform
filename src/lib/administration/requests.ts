@@ -74,6 +74,48 @@ function idField(
   return { ok: true, value: raw.trim() };
 }
 
+/**
+ * Reads an optional ISO date. `undefined` means the field was not supplied;
+ * `null` clears a previously stored window.
+ */
+function readOptionalIsoDate(
+  body: Record<string, unknown>,
+  key: string,
+  label: string,
+): ParseResult<string | null | undefined> {
+  if (!has(body, key)) {
+    return { ok: true, value: undefined };
+  }
+  const raw = readString(body, key);
+  if (raw === null || raw.trim().length === 0) {
+    return { ok: true, value: null };
+  }
+  if (!isIsoDate(raw)) {
+    return { ok: false, message: `Enter a valid ${label} (YYYY-MM-DD).` };
+  }
+  return { ok: true, value: raw };
+}
+
+/** Checks that an optional window is ordered and, where known, inside the term. */
+function validateTermWindow(
+  start: string | null | undefined,
+  end: string | null | undefined,
+  label: string,
+  termStart?: string,
+  termEnd?: string,
+): ParseResult<void> {
+  if (start !== null && start !== undefined && end !== null && end !== undefined && end < start) {
+    return { ok: false, message: `The ${label} end date must be on or after its start date.` };
+  }
+  if (start !== null && start !== undefined && termStart !== undefined && start < termStart) {
+    return { ok: false, message: `The ${label} cannot start before the term.` };
+  }
+  if (end !== null && end !== undefined && termEnd !== undefined && end > termEnd) {
+    return { ok: false, message: `The ${label} cannot end after the term.` };
+  }
+  return { ok: true, value: undefined };
+}
+
 // ---------------------------------------------------------------------------
 // School profile (area 1)
 // ---------------------------------------------------------------------------
@@ -189,6 +231,7 @@ export interface AcademicYearUpdateInput {
   readonly startsOn?: string;
   readonly endsOn?: string;
   readonly isCurrent?: boolean;
+  readonly status?: "UPCOMING" | "ACTIVE" | "CLOSED";
 }
 
 export function parseAcademicYearUpdateInput(
@@ -209,6 +252,7 @@ export function parseAcademicYearUpdateInput(
     startsOn?: string;
     endsOn?: string;
     isCurrent?: boolean;
+    status?: "UPCOMING" | "ACTIVE" | "CLOSED";
   } = { academicYearId: id.value };
 
   if (has(body, "name")) {
@@ -248,11 +292,20 @@ export function parseAcademicYearUpdateInput(
     value.isCurrent = raw;
   }
 
+  if (has(body, "status")) {
+    const raw = readString(body, "status");
+    if (raw !== "UPCOMING" && raw !== "ACTIVE" && raw !== "CLOSED") {
+      return { ok: false, message: "Invalid status." };
+    }
+    value.status = raw;
+  }
+
   if (
     value.name === undefined &&
     value.startsOn === undefined &&
     value.endsOn === undefined &&
-    value.isCurrent === undefined
+    value.isCurrent === undefined &&
+    value.status === undefined
   ) {
     return { ok: false, message: "Invalid request body." };
   }
@@ -280,6 +333,10 @@ export interface TermCreateInput {
   readonly name: string;
   readonly startsOn: string;
   readonly endsOn: string;
+  readonly vacationStart?: string | null;
+  readonly vacationEnd?: string | null;
+  readonly examStart?: string | null;
+  readonly examEnd?: string | null;
 }
 
 export function parseTermCreateInput(
@@ -319,9 +376,44 @@ export function parseTermCreateInput(
     };
   }
 
+  const vacationStart = readOptionalIsoDate(body, "vacationStart", "vacation start date");
+  if (!vacationStart.ok) return vacationStart;
+  const vacationEnd = readOptionalIsoDate(body, "vacationEnd", "vacation end date");
+  if (!vacationEnd.ok) return vacationEnd;
+  const examStart = readOptionalIsoDate(body, "examStart", "exam start date");
+  if (!examStart.ok) return examStart;
+  const examEnd = readOptionalIsoDate(body, "examEnd", "exam end date");
+  if (!examEnd.ok) return examEnd;
+
+  const vacationWindow = validateTermWindow(
+    vacationStart.value,
+    vacationEnd.value,
+    "vacation",
+    startsOn,
+    endsOn,
+  );
+  if (!vacationWindow.ok) return vacationWindow;
+  const examWindow = validateTermWindow(
+    examStart.value,
+    examEnd.value,
+    "exam period",
+    startsOn,
+    endsOn,
+  );
+  if (!examWindow.ok) return examWindow;
+
   return {
     ok: true,
-    value: { academicYearId: year.value, name, startsOn, endsOn },
+    value: {
+      academicYearId: year.value,
+      name,
+      startsOn,
+      endsOn,
+      ...(vacationStart.value !== undefined ? { vacationStart: vacationStart.value } : {}),
+      ...(vacationEnd.value !== undefined ? { vacationEnd: vacationEnd.value } : {}),
+      ...(examStart.value !== undefined ? { examStart: examStart.value } : {}),
+      ...(examEnd.value !== undefined ? { examEnd: examEnd.value } : {}),
+    },
   };
 }
 
@@ -330,6 +422,11 @@ export interface TermUpdateInput {
   readonly name?: string;
   readonly startsOn?: string;
   readonly endsOn?: string;
+  readonly isCurrent?: boolean;
+  readonly vacationStart?: string | null;
+  readonly vacationEnd?: string | null;
+  readonly examStart?: string | null;
+  readonly examEnd?: string | null;
 }
 
 export function parseTermUpdateInput(
@@ -349,6 +446,11 @@ export function parseTermUpdateInput(
     name?: string;
     startsOn?: string;
     endsOn?: string;
+    isCurrent?: boolean;
+    vacationStart?: string | null;
+    vacationEnd?: string | null;
+    examStart?: string | null;
+    examEnd?: string | null;
   } = { termId: id.value };
 
   if (has(body, "name")) {
@@ -379,10 +481,37 @@ export function parseTermUpdateInput(
     value.endsOn = endsOn;
   }
 
+  if (has(body, "isCurrent")) {
+    const raw = body["isCurrent"];
+    if (typeof raw !== "boolean") {
+      return { ok: false, message: "Invalid request body." };
+    }
+    value.isCurrent = raw;
+  }
+
+  const vacationStart = readOptionalIsoDate(body, "vacationStart", "vacation start date");
+  if (!vacationStart.ok) return vacationStart;
+  const vacationEnd = readOptionalIsoDate(body, "vacationEnd", "vacation end date");
+  if (!vacationEnd.ok) return vacationEnd;
+  const examStart = readOptionalIsoDate(body, "examStart", "exam start date");
+  if (!examStart.ok) return examStart;
+  const examEnd = readOptionalIsoDate(body, "examEnd", "exam end date");
+  if (!examEnd.ok) return examEnd;
+
+  if (vacationStart.value !== undefined) value.vacationStart = vacationStart.value;
+  if (vacationEnd.value !== undefined) value.vacationEnd = vacationEnd.value;
+  if (examStart.value !== undefined) value.examStart = examStart.value;
+  if (examEnd.value !== undefined) value.examEnd = examEnd.value;
+
   if (
     value.name === undefined &&
     value.startsOn === undefined &&
-    value.endsOn === undefined
+    value.endsOn === undefined &&
+    value.isCurrent === undefined &&
+    value.vacationStart === undefined &&
+    value.vacationEnd === undefined &&
+    value.examStart === undefined &&
+    value.examEnd === undefined
   ) {
     return { ok: false, message: "Invalid request body." };
   }
@@ -397,6 +526,23 @@ export function parseTermUpdateInput(
       message: "The end date must be on or after the start date.",
     };
   }
+
+  const vacationWindow = validateTermWindow(
+    value.vacationStart,
+    value.vacationEnd,
+    "vacation",
+    value.startsOn,
+    value.endsOn,
+  );
+  if (!vacationWindow.ok) return vacationWindow;
+  const examWindow = validateTermWindow(
+    value.examStart,
+    value.examEnd,
+    "exam period",
+    value.startsOn,
+    value.endsOn,
+  );
+  if (!examWindow.ok) return examWindow;
 
   return { ok: true, value };
 }
@@ -504,7 +650,8 @@ export function parseSubjectUpdateInput(
   if (
     value.name === undefined &&
     value.code === undefined &&
-    value.isActive === undefined
+    value.isActive === undefined &&
+    value.is_compulsory === undefined
   ) {
     return { ok: false, message: "Invalid request body." };
   }
@@ -883,4 +1030,65 @@ export function parseStatusTransitionInput(
     ok: true,
     value: { id: idRaw.trim(), status, entityType },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Exam timetable slot assignment
+// ---------------------------------------------------------------------------
+
+export interface ExamTimetableSlotUpdateInput {
+  readonly slotId: string;
+  readonly supervisorId?: string | null;
+  readonly roomName?: string | null;
+}
+
+/** Parses supervisor/room reassignment without changing the exam itself. */
+export function parseExamTimetableSlotUpdateInput(
+  body: unknown,
+): ParseResult<ExamTimetableSlotUpdateInput> {
+  if (!isRecord(body)) {
+    return { ok: false, message: "Invalid request body." };
+  }
+
+  const slot = idField(body, "slotId", "Invalid slot ID.");
+  if (!slot.ok) {
+    return slot;
+  }
+
+  const value: {
+    slotId: string;
+    supervisorId?: string | null;
+    roomName?: string | null;
+  } = { slotId: slot.value };
+
+  if (has(body, "supervisorId")) {
+    const raw = body["supervisorId"];
+    if (raw === null || raw === undefined || raw === "") {
+      value.supervisorId = null;
+    } else if (
+      typeof raw === "string" &&
+      UUID_PATTERN.test(raw.trim())
+    ) {
+      value.supervisorId = raw.trim();
+    } else {
+      return { ok: false, message: "Invalid supervisor." };
+    }
+  }
+
+  if (has(body, "roomName")) {
+    const raw = readString(body, "roomName");
+    if (raw === null || raw.trim().length === 0) {
+      value.roomName = null;
+    } else if (raw.trim().length <= 80) {
+      value.roomName = raw.trim();
+    } else {
+      return { ok: false, message: "A room name can be at most 80 characters." };
+    }
+  }
+
+  if (value.supervisorId === undefined && value.roomName === undefined) {
+    return { ok: false, message: "Choose a supervisor or a room to change." };
+  }
+
+  return { ok: true, value };
 }

@@ -816,7 +816,7 @@ export async function buildClassAcademicReport(input: {
   let query = supabase
     .from("assessments")
     .select(
-      "id, name, max_score, assessed_on, assessment_results ( learner_id, score )",
+      "id, name, subject_id, subjects ( name ), max_score, assessed_on, assessment_results ( learner_id, score )",
     )
     .eq("school_id", schoolId)
     .eq("class_id", classId)
@@ -842,6 +842,8 @@ export async function buildClassAcademicReport(input: {
   const assessments = (assessmentData ?? []) as {
     id: string;
     name: string;
+    subject_id: string | null;
+    subjects: { name: string }[] | null;
     max_score: number;
     assessed_on: string;
     assessment_results: { learner_id: string; score: number | null }[] | null;
@@ -892,6 +894,7 @@ export async function buildClassAcademicReport(input: {
     return {
       assessmentId: assessment.id,
       name: assessment.name,
+      subjectName: assessment.subjects?.[0]?.name ?? null,
       maxScore,
       assessedOn: assessment.assessed_on,
       averagePercentage: averagePercentage(percentages),

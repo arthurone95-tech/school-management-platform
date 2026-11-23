@@ -2,6 +2,7 @@ import type { NextResponse } from "next/server";
 
 import {
   parseEnrolmentInput,
+  parseLearnerGenderFilter,
   parseLearnerStatusFilter,
   parsePageParam,
 } from "@/lib/enrolment/requests";
@@ -36,8 +37,17 @@ export async function GET(request: Request): Promise<NextResponse> {
   const status = parseLearnerStatusFilter(url.searchParams.get("status"));
   const search = url.searchParams.get("search") ?? undefined;
   const classId = url.searchParams.get("classId") ?? undefined;
+  const gender = parseLearnerGenderFilter(url.searchParams.get("gender"));
 
-  const result = await listLearners(supabase, access.schoolId, page, status, search, classId);
+  const result = await listLearners(
+    supabase,
+    access.schoolId,
+    page,
+    status,
+    search,
+    classId,
+    gender,
+  );
   if (result === null) {
     return json({ ok: false, error: "The students could not be loaded." }, 500);
   }

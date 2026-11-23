@@ -70,6 +70,10 @@ export interface StaffMemberSummary {
   readonly email: string | null;
   readonly role: string;
   readonly status: string;
+  /** Membership creation time: when this person joined the school. */
+  readonly joinedAt: string;
+  /** Supabase Auth last sign-in, or null when the person has not signed in. */
+  readonly lastSignInAt: string | null;
   readonly assignments: readonly StaffAssignmentSummary[];
 }
 

@@ -395,6 +395,10 @@ export async function createTerm(input: {
   readonly name: string;
   readonly startsOn: string;
   readonly endsOn: string;
+  readonly vacationStart?: string | null;
+  readonly vacationEnd?: string | null;
+  readonly examStart?: string | null;
+  readonly examEnd?: string | null;
 }): Promise<TermResult> {
   const { data, error } = await input.supabase
     .from("terms")
@@ -404,6 +408,10 @@ export async function createTerm(input: {
       name: input.name,
       starts_on: input.startsOn,
       ends_on: input.endsOn,
+      vacation_start: input.vacationStart ?? null,
+      vacation_end: input.vacationEnd ?? null,
+      exam_start: input.examStart ?? null,
+      exam_end: input.examEnd ?? null,
     })
     .select("id, name, starts_on, ends_on, is_current, status, vacation_start, vacation_end, exam_start, exam_end")
     .maybeSingle();
@@ -587,13 +595,40 @@ export async function listSubjects(
   return (data as SubjectRow[]).map(toSubject);
 }
 
+interface AssessmentComponentRow {
+  readonly id: string;
+  readonly school_id: string;
+  readonly name: string;
+  readonly default_weight: number;
+  readonly description: string | null;
+  readonly is_active: boolean;
+  readonly created_at: string;
+  readonly updated_at: string;
+}
+
+function toAssessmentComponent(row: AssessmentComponentRow): AssessmentComponentSummary {
+  return {
+    id: row.id,
+    schoolId: row.school_id,
+    name: row.name,
+    defaultWeight: Number(row.default_weight),
+    description: row.description ?? null,
+    isActive: row.is_active,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+const ASSESSMENT_COMPONENT_COLUMNS =
+  "id, school_id, name, default_weight, description, is_active, created_at, updated_at";
+
 export async function listAssessmentComponents(
   supabase: ServerClient,
   schoolId: string,
 ): Promise<AssessmentComponentSummary[] | null> {
   const { data, error } = await supabase
     .from("assessment_components")
-    .select("id, name, default_weight, description, is_active, created_at, updated_at")
+    .select(ASSESSMENT_COMPONENT_COLUMNS)
     .eq("school_id", schoolId)
     .eq("is_active", true)
     .order("name", { ascending: true });
@@ -601,7 +636,7 @@ export async function listAssessmentComponents(
   if (error || !data) {
     return null;
   }
-  return (data as unknown as AssessmentComponentSummary[]);
+  return (data as AssessmentComponentRow[]).map(toAssessmentComponent);
 }
 
 export async function createAssessmentComponent(input: {
@@ -620,14 +655,14 @@ export async function createAssessmentComponent(input: {
       description: input.description,
       is_active: true,
     })
-    .select()
+    .select(ASSESSMENT_COMPONENT_COLUMNS)
     .maybeSingle();
 
   if (error || !data) {
     const reason = classify(error);
     return { ok: false, reason, message: failureMessage(reason, "Assessment Component") };
   }
-  return { ok: true, component: data as AssessmentComponentSummary };
+  return { ok: true, component: toAssessmentComponent(data as AssessmentComponentRow) };
 }
 
 export async function updateAssessmentComponent(input: {
@@ -650,7 +685,7 @@ export async function updateAssessmentComponent(input: {
     .update(patch)
     .eq("id", input.componentId)
     .eq("school_id", input.schoolId)
-    .select()
+    .select(ASSESSMENT_COMPONENT_COLUMNS)
     .maybeSingle();
 
   if (error) {
@@ -660,7 +695,7 @@ export async function updateAssessmentComponent(input: {
   if (!data) {
     return { ok: false, reason: "not_found", message: "Assessment component not found." };
   }
-  return { ok: true, component: data as AssessmentComponentSummary };
+  return { ok: true, component: toAssessmentComponent(data as AssessmentComponentRow) };
 }
 
 export async function deleteAssessmentComponent(input: {
@@ -673,7 +708,7 @@ export async function deleteAssessmentComponent(input: {
     .delete()
     .eq("id", input.componentId)
     .eq("school_id", input.schoolId)
-    .select()
+    .select(ASSESSMENT_COMPONENT_COLUMNS)
     .maybeSingle();
 
   if (error) {
@@ -683,7 +718,7 @@ export async function deleteAssessmentComponent(input: {
   if (!data) {
     return { ok: false, reason: "not_found", message: "Assessment component not found." };
   }
-  return { ok: true, component: data as AssessmentComponentSummary };
+  return { ok: true, component: toAssessmentComponent(data as AssessmentComponentRow) };
 }
 
 /** Assessment component view types. */
@@ -719,6 +754,7 @@ export async function createSubject(input: {
   readonly schoolId: string;
   readonly name: string;
   readonly code: string | null;
+  readonly isCompulsory?: boolean;
 }): Promise<SubjectResult> {
   const { data, error } = await input.supabase
     .from("subjects")
@@ -726,8 +762,9 @@ export async function createSubject(input: {
       school_id: input.schoolId,
       name: input.name,
       code: input.code,
+      is_compulsory: input.isCompulsory ?? true,
     })
-    .select("id, name, code, is_active")
+    .select("id, name, code, is_active, is_compulsory")
     .maybeSingle();
 
   if (error || !data) {
@@ -744,18 +781,20 @@ export async function updateSubject(input: {
   readonly name?: string;
   readonly code?: string | null;
   readonly isActive?: boolean;
+  readonly isCompulsory?: boolean;
 }): Promise<SubjectResult> {
   const patch: Record<string, unknown> = {};
   if (input.name !== undefined) patch.name = input.name;
   if (input.code !== undefined) patch.code = input.code;
   if (input.isActive !== undefined) patch.is_active = input.isActive;
+  if (input.isCompulsory !== undefined) patch.is_compulsory = input.isCompulsory;
 
   const { data, error } = await input.supabase
     .from("subjects")
     .update(patch)
     .eq("id", input.subjectId)
     .eq("school_id", input.schoolId)
-    .select("id, name, code, is_active")
+    .select("id, name, code, is_active, is_compulsory")
     .maybeSingle();
 
   if (error) {

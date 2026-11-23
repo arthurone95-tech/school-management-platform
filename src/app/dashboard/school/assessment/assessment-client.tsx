@@ -15,6 +15,10 @@ import {
   parseSubjectUpdateInput,
 } from "@/lib/administration/requests";
 import type { SubjectSummary } from "@/lib/administration/types";
+import {
+  parseClassCreateInput,
+  parseClassUpdateInput,
+} from "@/lib/enrolment/requests";
 
 const NETWORK_MESSAGE =
   "We could not reach the server. Check your connection and try again.";
@@ -24,6 +28,19 @@ type PostResult =
   | { readonly ok: false; readonly message: string };
 
 type Mode = "ges_standard" | "custom";
+
+interface ClassOption {
+  readonly id: string;
+  readonly name: string;
+  readonly isActive: boolean;
+}
+
+interface ComponentOption {
+  readonly id: string;
+  readonly name: string;
+  readonly defaultWeight: number;
+  readonly description: string | null;
+}
 
 async function postJson(url: string, body: unknown): Promise<PostResult> {
   let response: Response;
@@ -80,11 +97,15 @@ export function AssessmentClient({
   canManageSubjects,
   canReadGrading,
   canManageGrading,
+  canReadClasses,
+  canManageClasses,
 }: {
   readonly canReadSubjects: boolean;
   readonly canManageSubjects: boolean;
   readonly canReadGrading: boolean;
   readonly canManageGrading: boolean;
+  readonly canReadClasses: boolean;
+  readonly canManageClasses: boolean;
 }) {
   const [mode, setMode] = useState<Mode | null>(null);
   const [modeError, setModeError] = useState<string | null>(null);
@@ -95,11 +116,26 @@ export function AssessmentClient({
   const [subjectKey, setSubjectKey] = useState(0);
   const [subjectName, setSubjectName] = useState("");
   const [subjectCode, setSubjectCode] = useState("");
+  const [subjectCompulsory, setSubjectCompulsory] = useState(true);
+  const [editSubjectCompulsory, setEditSubjectCompulsory] = useState(true);
   const [creatingSubject, setCreatingSubject] = useState(false);
   const [editingSubjectId, setEditingSubjectId] = useState<string | null>(null);
   const [editSubjectName, setEditSubjectName] = useState("");
   const [editSubjectCode, setEditSubjectCode] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
+
+  const [classes, setClasses] = useState<ClassOption[] | null>(null);
+  const [classError, setClassError] = useState<string | null>(null);
+  const [classNotice, setClassNotice] = useState<string | null>(null);
+  const [classKey, setClassKey] = useState(0);
+  const [className, setClassName] = useState("");
+  const [creatingClass, setCreatingClass] = useState(false);
+  const [editingClassId, setEditingClassId] = useState<string | null>(null);
+  const [editClassName, setEditClassName] = useState("");
+
+  const [components, setComponents] = useState<ComponentOption[] | null>(null);
+  const [componentError, setComponentError] = useState<string | null>(null);
+  const [componentKey, setComponentKey] = useState(0);
 
   const [bands, setBands] = useState<GradeBandSummary[] | null>(null);
   const [bandError, setBandError] = useState<string | null>(null);
@@ -163,6 +199,54 @@ export function AssessmentClient({
   }, [canReadSubjects, mode, subjectKey]);
 
   useEffect(() => {
+    if (mode !== "custom" || !canReadClasses) {
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const result = await getJson(
+        "/api/staff/classes?includeInactive=true",
+        (payload) =>
+          (payload["classes"] as ClassOption[] | undefined) ?? null,
+      );
+      if (cancelled) return;
+      if (result.ok) {
+        setClasses(result.value);
+        setClassError(null);
+      } else {
+        setClassError(result.message);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [canReadClasses, classKey, mode]);
+
+  useEffect(() => {
+    if (mode !== "custom" || !canReadGrading) {
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const result = await getJson(
+        "/api/staff/assessment-components",
+        (payload) =>
+          (payload["components"] as ComponentOption[] | undefined) ?? null,
+      );
+      if (cancelled) return;
+      if (result.ok) {
+        setComponents(result.value);
+        setComponentError(null);
+      } else {
+        setComponentError(result.message);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [canReadGrading, componentKey, mode]);
+
+  useEffect(() => {
     if (mode !== "custom" || !canReadGrading) {
       return;
     }
@@ -200,6 +284,7 @@ export function AssessmentClient({
     const parsed = parseSubjectCreateInput({
       name: subjectName,
       code: subjectCode,
+      is_compulsory: subjectCompulsory,
     });
     if (!parsed.ok) {
       setSubjectError(parsed.message);
@@ -215,6 +300,7 @@ export function AssessmentClient({
     }
     setSubjectName("");
     setSubjectCode("");
+    setSubjectCompulsory(true);
     setSubjectNotice(`Added ${parsed.value.name}.`);
     reloadSubjects();
   }
@@ -224,6 +310,7 @@ export function AssessmentClient({
     readonly name?: string;
     readonly code?: string | null;
     readonly isActive?: boolean;
+    readonly is_compulsory?: boolean;
   }): Promise<boolean> {
     setSubjectError(null);
     setSubjectNotice(null);
@@ -260,12 +347,81 @@ export function AssessmentClient({
         subjectId: subject.id,
         name: editSubjectName,
         code: editSubjectCode,
+        is_compulsory: editSubjectCompulsory,
       })
     ) {
       setEditingSubjectId(null);
       setSubjectNotice(`Saved ${editSubjectName}.`);
       reloadSubjects();
     }
+  }
+
+  function reloadClasses() {
+    setClasses(null);
+    setClassKey((key) => key + 1);
+  }
+
+  async function handleCreateClass(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setClassError(null);
+    setClassNotice(null);
+    const parsed = parseClassCreateInput({ name: className });
+    if (!parsed.ok) {
+      setClassError(parsed.message);
+      return;
+    }
+    setCreatingClass(true);
+    const result = await postJson("/api/staff/classes", parsed.value);
+    setCreatingClass(false);
+    if (!result.ok) {
+      setClassError(result.message);
+      return;
+    }
+    setClassName("");
+    setClassNotice(`Added class ${parsed.value.name}.`);
+    reloadClasses();
+  }
+
+  async function handleSaveClass(classId: string) {
+    setClassError(null);
+    setClassNotice(null);
+    const parsed = parseClassUpdateInput({ classId, name: editClassName });
+    if (!parsed.ok) {
+      setClassError(parsed.message);
+      return;
+    }
+    setBusyId(classId);
+    const result = await postJson("/api/staff/classes/update", parsed.value);
+    setBusyId(null);
+    if (!result.ok) {
+      setClassError(result.message);
+      return;
+    }
+    setEditingClassId(null);
+    setClassNotice(`Saved class ${editClassName}.`);
+    reloadClasses();
+  }
+
+  async function handleToggleClass(item: ClassOption) {
+    setClassError(null);
+    setClassNotice(null);
+    const parsed = parseClassUpdateInput({
+      classId: item.id,
+      isActive: !item.isActive,
+    });
+    if (!parsed.ok) {
+      setClassError(parsed.message);
+      return;
+    }
+    setBusyId(item.id);
+    const result = await postJson("/api/staff/classes/update", parsed.value);
+    setBusyId(null);
+    if (!result.ok) {
+      setClassError(result.message);
+      return;
+    }
+    setClassNotice(item.isActive ? `Deactivated ${item.name}.` : `Reactivated ${item.name}.`);
+    reloadClasses();
   }
 
   async function handleCreateBand(event: FormEvent<HTMLFormElement>) {
@@ -428,6 +584,17 @@ export function AssessmentClient({
                       value={subjectCode}
                       onChange={(event) => setSubjectCode(event.target.value)}
                     />
+                    <span className="cluster">
+                      <input
+                        id="subject-compulsory"
+                        type="checkbox"
+                        checked={subjectCompulsory}
+                        onChange={(event) =>
+                          setSubjectCompulsory(event.target.checked)
+                        }
+                      />
+                      <label htmlFor="subject-compulsory">Compulsory</label>
+                    </span>
                     <Button type="submit" loading={creatingSubject}>
                       {creatingSubject ? "Adding…" : "Add subject"}
                     </Button>
@@ -476,6 +643,19 @@ export function AssessmentClient({
                                   setEditSubjectCode(event.target.value)
                                 }
                               />
+                              <span className="cluster">
+                                <input
+                                  id={`subject-compulsory-${subject.id}`}
+                                  type="checkbox"
+                                  checked={editSubjectCompulsory}
+                                  onChange={(event) =>
+                                    setEditSubjectCompulsory(event.target.checked)
+                                  }
+                                />
+                                <label htmlFor={`subject-compulsory-${subject.id}`}>
+                                  Compulsory
+                                </label>
+                              </span>
                               <Button
                                 type="submit"
                                 size="sm"
@@ -484,6 +664,7 @@ export function AssessmentClient({
                                 Save subject
                               </Button>
                               <Button
+                                type="button"
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => setEditingSubjectId(null)}
@@ -508,6 +689,9 @@ export function AssessmentClient({
                                 >
                                   {subject.isActive ? "Active" : "Inactive"}
                                 </span>
+                                <span className="badge">
+                                  {subject.is_compulsory ? "Compulsory" : "Optional"}
+                                </span>
                               </p>
                             </>
                           )}
@@ -522,6 +706,7 @@ export function AssessmentClient({
                                 setEditingSubjectId(subject.id);
                                 setEditSubjectName(subject.name);
                                 setEditSubjectCode(subject.code ?? "");
+                                setEditSubjectCompulsory(subject.is_compulsory);
                               }}
                             >
                               Edit
@@ -536,6 +721,178 @@ export function AssessmentClient({
                             </Button>
                           </div>
                         ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </CardBody>
+            </Card>
+          ) : null}
+
+          {canReadClasses ? (
+            <Card>
+              <CardHeader
+                title="Classes"
+                description="Create and maintain the class names used by the custom framework. Past placements stay intact; retire a class instead of deleting it."
+                actions={
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={reloadClasses}
+                    loading={classes === null && classError === null}
+                  >
+                    Refresh
+                  </Button>
+                }
+              />
+              <CardBody className="stack stack--sm">
+                {classNotice ? <Alert variant="success">{classNotice}</Alert> : null}
+                {classError ? <Alert variant="error">{classError}</Alert> : null}
+
+                {canManageClasses ? (
+                  <form className="inline-form" onSubmit={handleCreateClass} noValidate>
+                    <TextField
+                      label="Class name"
+                      name="className"
+                      autoComplete="off"
+                      required
+                      value={className}
+                      onChange={(event) => setClassName(event.target.value)}
+                    />
+                    <Button type="submit" loading={creatingClass}>
+                      {creatingClass ? "Adding…" : "Add class"}
+                    </Button>
+                  </form>
+                ) : (
+                  <Alert variant="info">Your role cannot change classes.</Alert>
+                )}
+
+                {classes === null ? (
+                  classError === null ? (
+                    <p className="muted" role="status">Loading classes…</p>
+                  ) : null
+                ) : classes.length === 0 ? (
+                  <p className="muted">No classes yet.</p>
+                ) : (
+                  <ul className="record-list">
+                    {classes.map((item) => (
+                      <li className="record" key={item.id}>
+                        <div className="record__main">
+                          {editingClassId === item.id ? (
+                            <form
+                              className="inline-form"
+                              onSubmit={(event) => {
+                                event.preventDefault();
+                                void handleSaveClass(item.id);
+                              }}
+                              noValidate
+                            >
+                              <TextField
+                                label="Class name"
+                                name={`class-name-${item.id}`}
+                                autoComplete="off"
+                                value={editClassName}
+                                onChange={(event) =>
+                                  setEditClassName(event.target.value)
+                                }
+                              />
+                              <Button
+                                type="submit"
+                                size="sm"
+                                loading={busyId === item.id}
+                              >
+                                Save
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setEditingClassId(null)}
+                              >
+                                Cancel
+                              </Button>
+                            </form>
+                          ) : (
+                            <>
+                              <p className="record__title">{item.name}</p>
+                              <p className="record__meta">
+                                <span className="badge">
+                                  {item.isActive ? "Active" : "Inactive"}
+                                </span>
+                              </p>
+                            </>
+                          )}
+                        </div>
+                        {canManageClasses && editingClassId !== item.id ? (
+                          <div className="record__actions">
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => {
+                                setEditingClassId(item.id);
+                                setEditClassName(item.name);
+                              }}
+                            >
+                              Rename
+                            </Button>
+                            <Button
+                              variant={item.isActive ? "danger" : "secondary"}
+                              size="sm"
+                              loading={busyId === item.id}
+                              onClick={() => void handleToggleClass(item)}
+                            >
+                              {item.isActive ? "Deactivate" : "Reactivate"}
+                            </Button>
+                          </div>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </CardBody>
+            </Card>
+          ) : null}
+
+          {canReadGrading ? (
+            <Card>
+              <CardHeader
+                title="Assessment components"
+                description="Components configured for the school. Existing weights are shown for reference only; changing weighting rules requires an approved grading decision."
+                actions={
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      setComponents(null);
+                      setComponentKey((key) => key + 1);
+                    }}
+                    loading={components === null && componentError === null}
+                  >
+                    Refresh
+                  </Button>
+                }
+              />
+              <CardBody className="stack stack--sm">
+                {componentError ? <Alert variant="info">{componentError}</Alert> : null}
+                {components === null ? (
+                  componentError === null ? (
+                    <p className="muted" role="status">Loading components…</p>
+                  ) : null
+                ) : components.length === 0 ? (
+                  <p className="muted">No assessment components configured.</p>
+                ) : (
+                  <ul className="record-list">
+                    {components.map((component) => (
+                      <li className="record" key={component.id}>
+                        <div className="record__main">
+                          <p className="record__title">{component.name}</p>
+                          <p className="record__meta">
+                            <span>Default weight: {component.defaultWeight}%</span>
+                            {component.description ? (
+                              <span>{component.description}</span>
+                            ) : null}
+                          </p>
+                        </div>
                       </li>
                     ))}
                   </ul>

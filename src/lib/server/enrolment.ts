@@ -1,5 +1,6 @@
 import "server-only";
 
+import { isInternalStudentId } from "@/lib/domain/identifiers";
 import {
   deriveUsernameBase,
   isValidUsername,
@@ -8,13 +9,17 @@ import {
 import {
   LEARNER_PAGE_SIZE,
   type EnrolmentInput,
+  type Gender,
   type LearnerCorrectionInput,
   type LearnerStatus,
 } from "@/lib/enrolment/requests";
 import type {
   ClassSummary,
+  LearnerAttendanceEntry,
   LearnerDetail,
   LearnerPage,
+  LearnerPlacementHistoryEntry,
+  LearnerResultEntry,
   LearnerSummary,
 } from "@/lib/enrolment/types";
 import type { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -63,7 +68,7 @@ const LEARNER_COLUMNS =
  * list response carries only what the list needs (docs/SECURITY_AND_PRIVACY.md
  * 4, docs/AGENTS.md 7).
  */
-const LEARNER_DETAIL_COLUMNS = `${LEARNER_COLUMNS}, residential_address, guardian_phone, guardian_email`;
+const LEARNER_DETAIL_COLUMNS = `${LEARNER_COLUMNS}, residential_address, guardian_phone, guardian_email, created_at, portal_access_state, auth_user_id`;
 
 interface RawLearner {
   id: string;
@@ -102,6 +107,18 @@ function errorCode(error: unknown): string {
 function errorText(error: unknown): string {
   const maybe = error as { message?: string; details?: string } | null;
   return `${maybe?.message ?? ""} ${maybe?.details ?? ""}`;
+}
+
+/** PostgREST returns a to-one embed as either an object or a one-item array. */
+function embeddedName(value: unknown): string | null {
+  if (Array.isArray(value)) {
+    const first = value[0] as { name?: string } | undefined;
+    return first?.name ?? null;
+  }
+  if (value && typeof value === "object" && "name" in value) {
+    return (value as { name?: string }).name ?? null;
+  }
+  return null;
 }
 
 /** The classes of one school, for the placement selector and the class list. */
@@ -157,14 +174,9 @@ async function currentPlacements(
   }
 
   for (const row of data) {
-    const embedded = row.classes as
-      { name: string } | { name: string }[] | null;
-    const className = Array.isArray(embedded)
-      ? (embedded[0]?.name ?? null)
-      : (embedded?.name ?? null);
     map.set(row.learner_id as string, {
       class_id: row.class_id as string,
-      class_name: className,
+      class_name: embeddedName(row.classes),
     });
   }
 
@@ -187,6 +199,7 @@ export async function listLearners(
   status: LearnerStatus | "all" = "active",
   search?: string,
   classId?: string,
+  gender: Gender | "all" = "all",
 ): Promise<LearnerPage | null> {
   const size = LEARNER_PAGE_SIZE;
   const from = (page - 1) * size;
@@ -199,6 +212,10 @@ export async function listLearners(
 
   if (status !== "all") {
     query = query.eq("status", status);
+  }
+
+  if (gender !== "all") {
+    query = query.eq("gender", gender);
   }
 
   // Optional class filter: only learners whose current placement is in that class.
@@ -219,14 +236,23 @@ export async function listLearners(
     query = query.in("id", ids);
   }
 
-  // Optional name/username/registration-number search.
+  // Optional name, username, registration-number and internal-id search. The
+  // UUID is matched exactly; wildcard characters are stripped from the text
+  // predicates so a search string cannot widen the query.
   const term = (search ?? "").trim();
   if (term.length > 0) {
     const safe = term.replace(/[%_]/g, "");
+    const predicates = [
+      `first_name.ilike.%${safe}%`,
+      `last_name.ilike.%${safe}%`,
+      `username.ilike.%${safe}%`,
+      `registration_number.ilike.%${safe}%`,
+    ];
+    if (isInternalStudentId(term)) {
+      predicates.push(`id.eq.${term}`);
+    }
     if (safe.length > 0) {
-      query = query.or(
-        `first_name.ilike.%${safe}%,last_name.ilike.%${safe}%,username.ilike.%${safe}%,registration_number.ilike.%${safe}%`,
-      );
+      query = query.or(predicates.join(","));
     }
   }
 
@@ -260,11 +286,15 @@ export async function listLearners(
  * carry every child's address and guardian contact details
  * (docs/SECURITY_AND_PRIVACY.md 4).
  */
+export type LearnerDetailWithAuthId = LearnerDetail & {
+  readonly authUserId: string | null;
+};
+
 export async function getLearnerDetail(
   supabase: ServerClient,
   schoolId: string,
   learnerId: string,
-): Promise<LearnerDetail | null> {
+): Promise<LearnerDetailWithAuthId | null> {
   const { data } = await supabase
     .from("learners")
     .select(LEARNER_DETAIL_COLUMNS)
@@ -275,6 +305,9 @@ export async function getLearnerDetail(
         residential_address: string;
         guardian_phone: string;
         guardian_email: string | null;
+        created_at: string;
+        portal_access_state: string;
+        auth_user_id: string | null;
       }
     >();
 
@@ -282,13 +315,158 @@ export async function getLearnerDetail(
     return null;
   }
 
-  const placements = await currentPlacements(supabase, [data.id]);
+  const [placements, placementHistory, attendanceHistory, results] =
+    await Promise.all([
+      currentPlacements(supabase, [data.id]),
+      learnerPlacementHistory(supabase, schoolId, data.id),
+      learnerAttendanceHistory(supabase, schoolId, data.id),
+      learnerResults(supabase, schoolId, data.id),
+    ]);
+
   return {
     ...toSummary(data, placements.get(data.id)),
     residentialAddress: data.residential_address,
     guardianPhone: data.guardian_phone,
     guardianEmail: data.guardian_email,
+    createdAt: data.created_at,
+    portalAccessState: data.portal_access_state,
+    authUserId: data.auth_user_id,
+    lastSignInAt: null, // Filled from Auth by the route, which owns the admin client.
+    placementHistory,
+    attendanceHistory,
+    results,
   };
+}
+
+/** Bounded class-transfer history for one student, newest first. */
+async function learnerPlacementHistory(
+  supabase: ServerClient,
+  schoolId: string,
+  learnerId: string,
+): Promise<readonly LearnerPlacementHistoryEntry[]> {
+  const { data, error } = await supabase
+    .from("learner_class_placements")
+    .select("class_id, classes(name), started_at, ended_at")
+    .eq("school_id", schoolId)
+    .eq("learner_id", learnerId)
+    .order("started_at", { ascending: false })
+    .limit(20);
+
+  if (error || !data) {
+    return [];
+  }
+
+  return data.map((row) => ({
+    classId: row.class_id as string,
+    className: embeddedName(row.classes) ?? "Unknown class",
+    startedAt: row.started_at as string,
+    endedAt: (row.ended_at as string | null) ?? null,
+    isCurrent: row.ended_at === null,
+  }));
+}
+
+/**
+ * Bounded attendance history for one student. Both tables are read on the
+ * caller's session client, so Row Level Security still limits the result to
+ * classes the caller may see (school-wide for an administrator, assigned
+ * classes for a teacher).
+ */
+async function learnerAttendanceHistory(
+  supabase: ServerClient,
+  schoolId: string,
+  learnerId: string,
+): Promise<readonly LearnerAttendanceEntry[]> {
+  const { data, error } = await supabase
+    .from("attendance_sessions")
+    .select(
+      "session_date, subjects(name), attendance_records!inner(status, note)",
+    )
+    .eq("school_id", schoolId)
+    .eq("attendance_records.learner_id", learnerId)
+    .order("session_date", { ascending: false })
+    .limit(20);
+
+  if (error || !data) {
+    return [];
+  }
+
+  const sessions = data as unknown as readonly {
+    session_date: string;
+    subjects: unknown;
+    attendance_records: readonly {
+      status: string;
+      note: string | null;
+    }[];
+  }[];
+
+  return sessions.flatMap((session) =>
+    session.attendance_records.map((record) => ({
+      sessionDate: session.session_date,
+      status: record.status,
+      subjectName: embeddedName(session.subjects),
+      note: record.note ?? null,
+    })),
+  );
+}
+
+/**
+ * Bounded recorded marks for one student. Only the stored score and assessment
+ * maximum are returned: the percentage is arithmetic, and no grading rule is
+ * applied here because schools configure their own scales (D-031).
+ */
+async function learnerResults(
+  supabase: ServerClient,
+  schoolId: string,
+  learnerId: string,
+): Promise<readonly LearnerResultEntry[]> {
+  const { data, error } = await supabase
+    .from("assessments")
+    .select(
+      "name, assessed_on, max_score, subjects(name), assessment_results!inner(score, remark)",
+    )
+    .eq("school_id", schoolId)
+    .eq("assessment_results.learner_id", learnerId)
+    .order("assessed_on", { ascending: false })
+    .limit(20);
+
+  if (error || !data) {
+    return [];
+  }
+
+  const assessments = data as unknown as readonly {
+    name: string;
+    assessed_on: string;
+    max_score: number;
+    subjects: unknown;
+    assessment_results: readonly {
+      score: number | string | null;
+      remark: string | null;
+    }[];
+  }[];
+
+  const results: LearnerResultEntry[] = [];
+  for (const assessment of assessments) {
+    const maxScore = Number(assessment.max_score);
+    for (const result of assessment.assessment_results) {
+      if (result.score === null || !Number.isFinite(maxScore) || maxScore <= 0) {
+        continue;
+      }
+      const score = Number(result.score);
+      if (!Number.isFinite(score)) {
+        continue;
+      }
+      results.push({
+        assessmentName: assessment.name,
+        assessedOn: assessment.assessed_on,
+        subjectName: embeddedName(assessment.subjects),
+        score,
+        maxScore,
+        percentage: Math.round((score / maxScore) * 10000) / 100,
+        remark: result.remark ?? null,
+      });
+    }
+  }
+  return results;
 }
 
 /**

@@ -50,6 +50,9 @@ export async function POST(request: Request): Promise<NextResponse> {
     ...(parsed.value.isActive !== undefined
       ? { isActive: parsed.value.isActive }
       : {}),
+    ...(parsed.value.is_compulsory !== undefined
+      ? { isCompulsory: parsed.value.is_compulsory }
+      : {}),
   });
 
   if (!result.ok) {

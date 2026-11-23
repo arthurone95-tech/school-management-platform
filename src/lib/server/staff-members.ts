@@ -47,7 +47,7 @@ export async function listSchoolMembers(input: {
 
   const { data: members, error: membersError } = await supabase
     .from("school_members")
-    .select("id, user_id, role, status")
+    .select("id, user_id, role, status, created_at")
     .eq("school_id", schoolId)
     .order("created_at", { ascending: true });
 
@@ -104,6 +104,10 @@ export async function listSchoolMembers(input: {
       email: userError ? null : (userData.user?.email ?? null),
       role: row.role as string,
       status: row.status as string,
+      joinedAt: row.created_at as string,
+      lastSignInAt: userError
+        ? null
+        : (userData.user?.last_sign_in_at ?? null),
       assignments: byMembership.get(row.id as string) ?? [],
     });
   }

@@ -24,13 +24,21 @@ export async function AssessmentGate() {
     redirect("/sign-in");
   }
 
-  const [canReadSubjects, canManageSubjects, canReadGrading, canManageGrading] =
-    await Promise.all([
-      context.hasPermission("subject.read"),
-      context.hasPermission("subject.manage"),
-      context.hasPermission("grade.read"),
-      context.hasPermission("grade.manage"),
-    ]);
+  const [
+    canReadSubjects,
+    canManageSubjects,
+    canReadGrading,
+    canManageGrading,
+    canReadClasses,
+    canManageClasses,
+  ] = await Promise.all([
+    context.hasPermission("subject.read"),
+    context.hasPermission("subject.manage"),
+    context.hasPermission("grade.read"),
+    context.hasPermission("grade.manage"),
+    context.hasPermission("class.read"),
+    context.hasPermission("class.manage"),
+  ]);
 
   return (
     <AssessmentClient
@@ -38,6 +46,8 @@ export async function AssessmentGate() {
       canManageSubjects={canManageSubjects}
       canReadGrading={canReadGrading}
       canManageGrading={canManageGrading}
+      canReadClasses={canReadClasses}
+      canManageClasses={canManageClasses}
     />
   );
 }

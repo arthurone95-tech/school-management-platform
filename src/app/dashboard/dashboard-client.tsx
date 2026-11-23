@@ -3,15 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard, StatGrid } from "@/components/ui/stat";
-import {
-  BookOpen,
-  CalendarCheck,
-  GraduationCap,
-  Users,
-} from "lucide-react";
+import type { DashboardOverview } from "@/lib/staff/dashboard-overview";
+import { BookOpen, GraduationCap, Users } from "lucide-react";
 
 export interface DashboardMetrics {
   readonly totalStudents: number;
@@ -21,14 +19,56 @@ export interface DashboardMetrics {
   readonly recentActivityCount: number;
 }
 
+const EVENT_TYPE_LABELS: Readonly<Record<string, string>> = {
+  GENERAL: "General",
+  HOLIDAY: "Holiday",
+  EXAM: "Examination",
+  MEETING: "Meeting",
+  SPORTS: "Sports",
+  CULTURAL: "Cultural",
+  OTHER: "Other",
+};
+
+function dateRange(startsOn: string, endsOn: string): string {
+  return startsOn === endsOn ? startsOn : `${startsOn} → ${endsOn}`;
+}
+
+function OverviewList({
+  entries,
+  emptyMessage,
+}: {
+  readonly entries: readonly {
+    readonly id: string;
+    readonly title: string;
+    readonly meta: string;
+  }[];
+  readonly emptyMessage: string;
+}) {
+  if (entries.length === 0) {
+    return <p className="muted">{emptyMessage}</p>;
+  }
+  return (
+    <ul className="record-list">
+      {entries.map((entry) => (
+        <li key={entry.id} className="record">
+          <div className="record__main">
+            <span className="record__title">{entry.title}</span>
+            <div className="record__meta">{entry.meta}</div>
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function DashboardClient({
   schoolName,
   metrics,
-  role,
+  overview,
 }: {
   readonly schoolName: string | null;
   readonly metrics: DashboardMetrics;
-  readonly role: string | null;
+  readonly overview: DashboardOverview;
 }) {
   const pathname = usePathname();
   const active =
@@ -36,43 +76,6 @@ export function DashboardClient({
       href === "/dashboard"
         ? pathname === "/dashboard"
         : pathname === href || pathname.startsWith(href + "/");
-
-  // --- Teacher home view ---
-
-  if (role === "teacher") {
-    return (
-      <div className="stack">
-        <PageHeader
-          title={`Welcome back, ${schoolName ?? "your school"}`}
-          description="Your dashboard for taking attendance and entering marks."
-        />
-
-        {/* Classes grid */}
-        {metrics.totalClasses > 0 ? (
-          <div className="dashboard-grid">
-            <p className="muted">
-              Your classes are loading. Please wait…
-            </p>
-          </div>
-        ) : (
-          <p className="muted">
-            You have no classes assigned yet. Ask the administrator to assign
-            classes to you.
-          </p>
-        )}
-
-        {/* Recent assessments summary */}
-        <Card>
-          <CardHeader title="Recent assessments" />
-          <CardBody>
-            <p className="muted">Loading assessment data…</p>
-          </CardBody>
-        </Card>
-      </div>
-    );
-  }
-
-  // --- Administrator home view ---
 
   const greeting = schoolName
     ? `Welcome back, ${schoolName}${
@@ -233,6 +236,122 @@ export function DashboardClient({
           hint="events"
         />
       </StatGrid>
+
+      {/* School overview */}
+      {overview.incomplete ? (
+        <Alert variant="error" role={null}>
+          Some school overview figures could not be loaded. Refresh the page to
+          try again.
+        </Alert>
+      ) : null}
+
+      <div className="dashboard-grid">
+        <Card>
+          <CardHeader title="Student profile" />
+          <CardBody>
+            <ul className="record-list">
+              <li className="record">
+                <div className="record__main">
+                  <span className="record__title">Male students</span>
+                </div>
+                <div className="record__actions">
+                  <Badge variant="info">{overview.maleLearners}</Badge>
+                </div>
+              </li>
+              <li className="record">
+                <div className="record__main">
+                  <span className="record__title">Female students</span>
+                </div>
+                <div className="record__actions">
+                  <Badge variant="info">{overview.femaleLearners}</Badge>
+                </div>
+              </li>
+              <li className="record">
+                <div className="record__main">
+                  <span className="record__title">Other</span>
+                </div>
+                <div className="record__actions">
+                  <Badge variant="neutral">{overview.otherLearners}</Badge>
+                </div>
+              </li>
+              <li className="record">
+                <div className="record__main">
+                  <span className="record__title">Active students</span>
+                </div>
+                <div className="record__actions">
+                  <Badge variant="success">{overview.activeLearners}</Badge>
+                </div>
+              </li>
+              <li className="record">
+                <div className="record__main">
+                  <span className="record__title">Inactive students</span>
+                </div>
+                <div className="record__actions">
+                  <Badge variant="inactive">{overview.inactiveLearners}</Badge>
+                </div>
+              </li>
+            </ul>
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader title="Enrolment by class" />
+          <CardBody>
+            <OverviewList
+              entries={overview.enrolmentByClass.map((klass) => ({
+                id: klass.classId,
+                title: klass.className,
+                meta: `${klass.count} students`,
+              }))}
+              emptyMessage="No classes have been added yet."
+            />
+          </CardBody>
+        </Card>
+      </div>
+
+      <div className="dashboard-grid">
+        <Card>
+          <CardHeader title="Upcoming events" />
+          <CardBody>
+            <OverviewList
+              entries={overview.upcomingEvents.map((event) => ({
+                id: event.id,
+                title: event.title,
+                meta: `${EVENT_TYPE_LABELS[event.eventType] ?? event.eventType} · ${dateRange(event.startsOn, event.endsOn)}`,
+              }))}
+              emptyMessage="No upcoming events."
+            />
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader title="Upcoming examinations" />
+          <CardBody>
+            <OverviewList
+              entries={overview.upcomingExams.map((exam) => ({
+                id: exam.id,
+                title: exam.name,
+                meta: `${dateRange(exam.startsOn, exam.endsOn)} · ${exam.status}`,
+              }))}
+              emptyMessage="No upcoming examinations."
+            />
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader title="Upcoming assessments" />
+          <CardBody>
+            <OverviewList
+              entries={overview.upcomingAssessments.map((assessment) => ({
+                id: assessment.id,
+                title: assessment.name,
+                meta: `${assessment.className || "Whole school"} · ${assessment.assessedOn}`,
+              }))}
+              emptyMessage="No upcoming assessments."
+            />
+          </CardBody>
+        </Card>
+      </div>
 
       {/* Quick actions */}
       <div className="quick-actions">

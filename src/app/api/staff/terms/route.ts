@@ -51,6 +51,18 @@ export async function POST(request: Request): Promise<NextResponse> {
     name: parsed.value.name,
     startsOn: parsed.value.startsOn,
     endsOn: parsed.value.endsOn,
+    ...(parsed.value.vacationStart !== undefined
+      ? { vacationStart: parsed.value.vacationStart }
+      : {}),
+    ...(parsed.value.vacationEnd !== undefined
+      ? { vacationEnd: parsed.value.vacationEnd }
+      : {}),
+    ...(parsed.value.examStart !== undefined
+      ? { examStart: parsed.value.examStart }
+      : {}),
+    ...(parsed.value.examEnd !== undefined
+      ? { examEnd: parsed.value.examEnd }
+      : {}),
   });
 
   if (!result.ok) {

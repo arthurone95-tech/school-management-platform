@@ -22,20 +22,36 @@ create table public.assessment_components (
   -- Ensure name is unique per school
   constraint assessment_components_school_name_key unique (school_id, name),
 
-  -- RLS enable by default; policies managed separately
+  -- RLS enabled below; school-scoped policies use has_school_permission.
+  constraint assessment_components_id_school_key unique (id, school_id)
 );
 
 -- Enable Row Level Security
 alter table public.assessment_components enable row level security;
 
--- Grant permissions to authenticated service role
+create policy assessment_components_select_permitted
+  on public.assessment_components for select to authenticated
+  using (public.has_school_permission(school_id, 'academic.manage'));
+
+create policy assessment_components_insert_managers
+  on public.assessment_components for insert to authenticated
+  with check (public.has_school_permission(school_id, 'academic.manage'));
+
+create policy assessment_components_update_managers
+  on public.assessment_components for update to authenticated
+  using (public.has_school_permission(school_id, 'academic.manage'))
+  with check (public.has_school_permission(school_id, 'academic.manage'));
+
+create policy assessment_components_delete_managers
+  on public.assessment_components for delete to authenticated
+  using (public.has_school_permission(school_id, 'academic.manage'));
+
+grant select, insert, update, delete on public.assessment_components to authenticated;
 grant all on public.assessment_components to service_role;
 
--- Policies (managed via has_school_permission helper)
--- - SELECT: authenticated users with academic.manage
--- - INSERT: authenticated users with academic.manage  
--- - UPDATE: authenticated users with academic.manage
--- - DELETE: authenticated users with academic.manage
+create trigger assessment_components_set_updated_at
+  before update on public.assessment_components
+  for each row execute function public.set_updated_at();
 
 comment on table public.assessment_components is
   'School-defined assessment components (e.g., "Class Assessment", "Midterm Exam", "Final Exam").

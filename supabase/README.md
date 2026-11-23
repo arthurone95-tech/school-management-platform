@@ -40,6 +40,15 @@ live** to the non-production dev project `school-management-dev`
   attendance tables to `service_role` alone so the non-production seed can clear
   attendance before deleting learners; `anon`/`authenticated` still hold none
   (D-030); **applied live** 2026-10-17
+- `20261106000015_subject_compulsory_flag.sql` and
+  `20261106000016_assessment_components.sql` — assessment components and the
+  original subject compulsory flag. Migration 0015 dropped the column in the
+  same file, and 0016 contained a trailing comma that prevented it from being
+  applied anywhere; both were repaired. `20261122000017_subject_compulsory_restore.sql`
+  is the forward-only repair that re-adds `subjects.is_compulsory`.
+  All three are **verified locally** against the full PGlite migration chain.
+  Live application to `school-management-dev` is pending a Management API token
+  (the available service-role key returns HTTP 401 from `/database/query`).
 
 No production database exists; the Free dev project is a **disposable,
 non-production** environment (D-013, D-015).

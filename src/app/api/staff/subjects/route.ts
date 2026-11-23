@@ -65,6 +65,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     schoolId: access.schoolId,
     name: parsed.value.name,
     code: parsed.value.code,
+    isCompulsory: parsed.value.is_compulsory,
   });
 
   if (!result.ok) {

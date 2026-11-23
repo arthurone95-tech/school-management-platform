@@ -9,11 +9,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { TextField } from "@/components/ui/form";
+import { formatDateTime } from "@/lib/domain/display";
 import {
   parseClassCreateInput,
   parseClassUpdateInput,
 } from "@/lib/enrolment/requests";
-import type { ClassSummary } from "@/lib/enrolment/types";
+import type { ClassSummary, LearnerSummary } from "@/lib/enrolment/types";
 import { roleLabel } from "@/lib/staff/roles";
 
 type ListState =
@@ -51,6 +52,102 @@ async function fetchClasses(): Promise<ListState> {
   return { kind: "ready", classes: payload.classes };
 }
 
+/** Keeps a class print bounded even if a school has an unusually large class. */
+const MAX_ROSTER_PAGES = 50;
+
+async function fetchClassLearners(classId: string): Promise<{
+  readonly learners: LearnerSummary[];
+  readonly total: number;
+} | null> {
+  const learners: LearnerSummary[] = [];
+  let page = 1;
+  let total = 0;
+
+  while (page <= MAX_ROSTER_PAGES) {
+    const params = new URLSearchParams();
+    params.set("page", String(page));
+    params.set("status", "active");
+    params.set("classId", classId);
+
+    let response: Response;
+    try {
+      response = await fetch(`/api/staff/learners?${params.toString()}`, {
+        headers: { Accept: "application/json" },
+      });
+    } catch {
+      return null;
+    }
+
+    const payload = (await response.json().catch(() => ({}))) as {
+      readonly ok?: boolean;
+      readonly learners?: LearnerSummary[];
+      readonly total?: number;
+    };
+    if (!response.ok || payload.ok !== true || !payload.learners) {
+      return null;
+    }
+
+    learners.push(...payload.learners);
+    total = typeof payload.total === "number" ? payload.total : learners.length;
+    if (payload.learners.length === 0 || learners.length >= total) {
+      break;
+    }
+    page += 1;
+  }
+
+  return { learners, total };
+}
+
+function ClassPrintableList({
+  className,
+  learners,
+  total,
+  schoolName,
+  printedAt,
+}: {
+  readonly className: string;
+  readonly learners: readonly LearnerSummary[];
+  readonly total: number;
+  readonly schoolName: string | null;
+  readonly printedAt: string;
+}) {
+  return (
+    <div className="terminal-report-card">
+      <h2>{className} — class list</h2>
+      <p className="muted">
+        {schoolName ?? "School"} · Generated {formatDateTime(printedAt)}
+      </p>
+      {total > learners.length ? (
+        <p className="muted">
+          Showing {learners.length} of {total} learners in this class.
+        </p>
+      ) : null}
+      <div className="table-wrap">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Registration number</th>
+              <th>Learner</th>
+              <th>Gender</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {learners.map((learner) => (
+              <tr key={learner.id}>
+                <td>{learner.registrationNumber}</td>
+                <td>{`${learner.firstName} ${learner.lastName}`.trim()}</td>
+                <td>{learner.gender}</td>
+                <td>{learner.status}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 export function ClassesClient({
   email,
   role,
@@ -81,6 +178,14 @@ export function ClassesClient({
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [rosterBusyId, setRosterBusyId] = useState<string | null>(null);
+  const [rosterError, setRosterError] = useState<string | null>(null);
+  const [roster, setRoster] = useState<{
+    readonly className: string;
+    readonly learners: readonly LearnerSummary[];
+    readonly total: number;
+    readonly printedAt: string;
+  } | null>(null);
 
   const [signingOut, setSigningOut] = useState(false);
 
@@ -220,6 +325,35 @@ export function ClassesClient({
     }
   }
 
+  async function printClassList(klass: ClassSummary) {
+    setRoster(null);
+    setRosterError(null);
+    setRosterBusyId(klass.id);
+
+    try {
+      const result = await fetchClassLearners(klass.id);
+      if (!result) {
+        setRosterError("The class list could not be loaded.");
+        return;
+      }
+
+      setRoster({
+        className: klass.name,
+        learners: result.learners,
+        total: result.total,
+        printedAt: new Date().toISOString(),
+      });
+      window.setTimeout(() => {
+        window.print();
+        setRoster(null);
+      }, 0);
+    } catch {
+      setRosterError(NETWORK_MESSAGE);
+    } finally {
+      setRosterBusyId(null);
+    }
+  }
+
   async function handleSignOut() {
     setSigningOut(true);
     try {
@@ -301,6 +435,11 @@ export function ClassesClient({
                   </Button>
                 }
               />
+              {rosterError ? (
+                <CardBody>
+                  <Alert variant="error">{rosterError}</Alert>
+                </CardBody>
+              ) : null}
               {actionError ? (
                 <CardBody>
                   <Alert variant="error">{actionError}</Alert>
@@ -371,6 +510,18 @@ export function ClassesClient({
                           </>
                         )}
                       </div>
+                      {canViewStudents && editingId !== klass.id ? (
+                        <div className="record__actions">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            loading={rosterBusyId === klass.id}
+                            onClick={() => void printClassList(klass)}
+                          >
+                            Print class list
+                          </Button>
+                        </div>
+                      ) : null}
                       {canManage && editingId !== klass.id ? (
                         <div className="record__actions">
                           <Button
@@ -436,6 +587,16 @@ export function ClassesClient({
           </>
         )}
       </div>
+
+      {roster ? (
+        <ClassPrintableList
+          className={roster.className}
+          learners={roster.learners}
+          total={roster.total}
+          schoolName={schoolName}
+          printedAt={roster.printedAt}
+        />
+      ) : null}
     </>
   );
 }
