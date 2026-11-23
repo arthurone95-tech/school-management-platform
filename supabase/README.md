@@ -47,8 +47,10 @@ live** to the non-production dev project `school-management-dev`
   applied anywhere; both were repaired. `20261122000017_subject_compulsory_restore.sql`
   is the forward-only repair that re-adds `subjects.is_compulsory`.
   All three are **verified locally** against the full PGlite migration chain.
-  Live application to `school-management-dev` is pending a Management API token
-  (the available service-role key returns HTTP 401 from `/database/query`).
+  `20261106000016_assessment_components.sql` and
+  `20261122000017_subject_compulsory_restore.sql` were **applied live** to
+  `school-management-dev` on 2026-11-23 through the Management API helper and
+  recorded in `supabase_migrations.schema_migrations`.
 
 No production database exists; the Free dev project is a **disposable,
 non-production** environment (D-013, D-015).
