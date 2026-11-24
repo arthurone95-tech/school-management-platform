@@ -51,6 +51,13 @@ live** to the non-production dev project `school-management-dev`
   `20261122000017_subject_compulsory_restore.sql` were **applied live** to
   `school-management-dev` on 2026-11-23 through the Management API helper and
   recorded in `supabase_migrations.schema_migrations`.
+- `20261124000018_launch_now_features.sql` and
+  `20261124000019_headmaster_signoff_modes.sql` — attendance toggle, health
+  status, report-card approval state, and three-option headmaster sign-off
+  configuration with school-scoped storage policies. Both are **verified
+  locally** against the full PGlite migration chain and were **applied live** to
+  `school-management-dev` on 2026-11-24 through the Management API helper and
+  recorded in `supabase_migrations.schema_migrations`.
 
 No production database exists; the Free dev project is a **disposable,
 non-production** environment (D-013, D-015).

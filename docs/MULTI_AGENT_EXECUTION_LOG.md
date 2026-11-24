@@ -67,6 +67,7 @@
   - `src/lib/reports/sign-off.ts`
   - `docs/MULTI_AGENT_EXECUTION_LOG.md`
 - Quality gates: typecheck PASS, lint PASS (0 errors, 65 warnings), tests PASS (26 files, 420 tests), build PASS.
+- Live schema status: migrations `20261124000018_launch_now_features.sql` and `20261124000019_headmaster_signoff_modes.sql` were applied to `school-management-dev` on 2026-11-24 through `tests/live/apply-migration.mjs` and recorded in `supabase_migrations.schema_migrations`.
 
 ## Final Quality Gates
 - Typecheck: PASS
