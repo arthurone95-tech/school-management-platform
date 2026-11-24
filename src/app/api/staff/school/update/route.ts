@@ -54,6 +54,11 @@ export async function POST(request: Request): Promise<NextResponse> {
     officialEmail: parsed.value.officialEmail,
     website: parsed.value.website,
     logoUrl: parsed.value.logoUrl,
+    enableAttendance: parsed.value.enableAttendance,
+    headmasterSignatureUrl: parsed.value.headmasterSignatureUrl,
+    signOffMode: parsed.value.signOffMode,
+    headmasterName: parsed.value.headmasterName,
+    headmasterTitle: parsed.value.headmasterTitle,
   });
 
   if (!result.ok) {

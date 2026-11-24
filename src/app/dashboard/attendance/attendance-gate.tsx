@@ -31,6 +31,10 @@ export async function AttendanceGate() {
     redirect("/sign-in");
   }
 
+  if (!context.enableAttendance) {
+    redirect("/dashboard");
+  }
+
   const [canTakeAttendance, canViewReport] = await Promise.all([
     context.hasPermission("attendance.record"),
     context.hasPermission("attendance.report"),

@@ -2,6 +2,8 @@
 
 import type { ReactNode } from "react";
 
+import type { SignOffMode } from "@/lib/administration/types";
+
 export interface TerminalSubject {
   readonly name: string;
   readonly classScore?: number | null;
@@ -16,6 +18,7 @@ export interface TerminalSubject {
 export interface TerminalBills {
   readonly schoolFees?: number | null;
   readonly arrears?: number | null;
+  readonly nextTermFee?: number | null;
   readonly motivationalFees?: number | null;
   readonly maintenanceFees?: number | null;
   readonly firstAid?: number | null;
@@ -39,6 +42,12 @@ export interface TerminalReportCardProps {
   readonly interest?: string | null;
   readonly teacherRemarks?: string | null;
   readonly headTeacherRemarks?: string | null;
+  readonly reportStatus?: "draft" | "confirmed";
+  readonly headmasterSignatureUrl?: string | null;
+  readonly signOffMode?: SignOffMode | null;
+  readonly signatoryName?: string | null;
+  readonly signatoryTitle?: string | null;
+  readonly confirmedAt?: string | null;
   readonly promotedTo?: string | null;
   readonly bills?: TerminalBills | null;
   readonly earlyYears?: boolean;
@@ -81,6 +90,12 @@ export function TerminalReportCard(props: TerminalReportCardProps) {
     interest,
     teacherRemarks,
     headTeacherRemarks,
+    reportStatus,
+    headmasterSignatureUrl,
+    signOffMode,
+    signatoryName,
+    signatoryTitle,
+    confirmedAt,
     promotedTo,
     bills,
     earlyYears,
@@ -168,10 +183,14 @@ export function TerminalReportCard(props: TerminalReportCardProps) {
   const createdAtDisplay = createdAt
     ? new Date(createdAt).toLocaleDateString("en-GB")
     : "-";
+  const confirmedAtDisplay = confirmedAt
+    ? new Date(confirmedAt).toLocaleDateString("en-GB")
+    : createdAtDisplay;
 
   const billParts = [
     bills?.schoolFees,
     bills?.arrears,
+    bills?.nextTermFee,
     bills?.motivationalFees,
     bills?.maintenanceFees,
     bills?.firstAid,
@@ -285,20 +304,46 @@ export function TerminalReportCard(props: TerminalReportCardProps) {
         <div style={{ background: "#f9f9f9", padding: "6px 10px", border: "1px solid #ddd", margin: "6px 0", fontSize: "8pt" }}>
           <p style={{ margin: 0 }}><strong>CLASS TEACHER&apos;S REMARKS:</strong> {(teacherRemarks ?? "-").toUpperCase()}</p>
         </div>
-        <div style={{ background: "#f9f9f9", padding: "6px 10px", border: "1px solid #ddd", margin: "6px 0", fontSize: "8pt" }}>
-          <p style={{ margin: 0 }}><strong>HEAD TEACHER&apos;S REMARKS:</strong> {(headTeacherRemarks ?? "-").toUpperCase()}</p>
-        </div>
+        {reportStatus === "confirmed" ? (
+          <>
+            <div style={{ background: "#f9f9f9", padding: "6px 10px", border: "1px solid #ddd", margin: "6px 0", fontSize: "8pt" }}>
+              <p style={{ margin: 0 }}><strong>HEAD TEACHER&apos;S REMARKS:</strong> {(headTeacherRemarks ?? "-").toUpperCase()}</p>
+            </div>
+            {signOffMode === "stamp" ? (
+              <div
+                className="report-card-signoff report-card-signoff--stamp"
+                style={{ border: "2px solid #111", padding: "8px 12px", margin: "8px 0", maxWidth: "320px", marginLeft: "auto", textAlign: "right", fontSize: "8pt" }}
+              >
+                <strong style={{ textTransform: "uppercase" }}>{signatoryName ?? "Headmaster"}</strong>
+                <br />
+                <span>{signatoryTitle ?? "Headmaster"}</span>
+                <br />
+                <span className="muted">Confirmed • {confirmedAtDisplay}</span>
+              </div>
+            ) : headmasterSignatureUrl ? (
+              <div className="report-card-signoff" style={{ textAlign: "right", margin: "8px 0" }}>
+                <img
+                  src={headmasterSignatureUrl}
+                  alt="Headmaster signature"
+                  className="report-card-signoff-image"
+                  style={{ maxHeight: "48px", filter: "grayscale(1) contrast(2)" }}
+                />
+              </div>
+            ) : null}
+          </>
+        ) : null}
 
         {bills ? (
           <div style={{ margin: "8px 0", padding: "8px 12px", border: "1px solid #000", fontSize: "8pt" }}>
             <h4 style={{ margin: "0 0 4px 0" }}>Next Term Bills</h4>
             <p style={{ margin: "2px 0" }}><strong>School Fees:</strong> {money(bills.schoolFees)}</p>
             <p style={{ margin: "2px 0" }}><strong>Arrears:</strong> {money(bills.arrears)}</p>
+            <p style={{ margin: "2px 0" }}><strong>Next Term Fees:</strong> {money(bills.nextTermFee)}</p>
             <p style={{ margin: "2px 0" }}><strong>Motivational Fees:</strong> {money(bills.motivationalFees)}</p>
             <p style={{ margin: "2px 0" }}><strong>Maintenance Fees:</strong> {money(bills.maintenanceFees)}</p>
             <p style={{ margin: "2px 0" }}><strong>First Aid:</strong> {money(bills.firstAid)}</p>
             <hr style={{ margin: "4px 0", border: "1px dashed #ccc" }} />
-            <p style={{ margin: "2px 0", fontWeight: "bold" }}><strong>TOTAL:</strong> {money(billTotal)}</p>
+            <p style={{ margin: "2px 0", fontWeight: "bold" }}><strong>Total Balance Due:</strong> {money(billTotal)}</p>
           </div>
         ) : null}
 

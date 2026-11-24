@@ -27,6 +27,7 @@ export const GUARDIAN_EMAIL_MAX_LENGTH = 254;
 export const NAME_MAX_LENGTH = 80;
 export const ADDRESS_MAX_LENGTH = 400;
 export const GUARDIAN_PHONE_MAX_LENGTH = 40;
+export const HEALTH_STATUS_MAX_LENGTH = 500;
 
 /** Label shown for a learner who has no current class placement. */
 export const UNPLACED_LABEL = "No class yet";
@@ -46,6 +47,7 @@ export interface EnrolmentInput {
   readonly residentialAddress: string;
   readonly guardianPhone: string;
   readonly guardianEmail: string | null;
+  readonly healthStatus: string | null;
   readonly classId: string;
 }
 
@@ -210,6 +212,23 @@ function checkOptionalGuardianEmail(
   return { ok: true, value: normalised };
 }
 
+/** Optional free-text medical/health note; blank becomes null. */
+function checkOptionalHealthStatus(
+  raw: string | null,
+): ParseResult<string | null> {
+  if (raw === null || raw.trim().length === 0) {
+    return { ok: true, value: null };
+  }
+  const trimmed = raw.trim();
+  if (trimmed.length > HEALTH_STATUS_MAX_LENGTH) {
+    return {
+      ok: false,
+      message: `Enter a health status of at most ${HEALTH_STATUS_MAX_LENGTH} characters.`,
+    };
+  }
+  return { ok: true, value: trimmed };
+}
+
 function checkUuid(raw: string, message: string): ParseResult<string> {
   const trimmed = raw.trim();
   if (!UUID_PATTERN.test(trimmed)) {
@@ -287,6 +306,13 @@ export function parseEnrolmentInput(
     return guardianEmail;
   }
 
+  const healthStatus = checkOptionalHealthStatus(
+    readString(body, "healthStatus"),
+  );
+  if (!healthStatus.ok) {
+    return healthStatus;
+  }
+
   const classId = checkUuid(
     readString(body, "classId") ?? "",
     CLASS_ID_MESSAGE,
@@ -306,6 +332,7 @@ export function parseEnrolmentInput(
       residentialAddress: residentialAddress.value,
       guardianPhone: guardianPhone.value,
       guardianEmail: guardianEmail.value,
+      healthStatus: healthStatus.value,
       classId: classId.value,
     },
   };
@@ -370,6 +397,7 @@ export interface LearnerCorrectionInput {
   readonly residentialAddress?: string;
   readonly guardianPhone?: string;
   readonly guardianEmail?: string | null;
+  readonly healthStatus?: string | null;
 }
 
 export interface LearnerStatusInput {
@@ -481,6 +509,7 @@ export function parseLearnerCorrectionInput(
     residentialAddress?: string;
     guardianPhone?: string;
     guardianEmail?: string | null;
+    healthStatus?: string | null;
   } = { learnerId: learnerId.value };
 
   if ("registrationNumber" in body) {
@@ -558,6 +587,16 @@ export function parseLearnerCorrectionInput(
       return checked;
     }
     value.guardianEmail = checked.value;
+  }
+
+  if ("healthStatus" in body) {
+    const checked = checkOptionalHealthStatus(
+      readString(body, "healthStatus"),
+    );
+    if (!checked.ok) {
+      return checked;
+    }
+    value.healthStatus = checked.value;
   }
 
   const changed = Object.keys(value).filter((key) => key !== "learnerId");

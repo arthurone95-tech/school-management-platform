@@ -3,6 +3,7 @@ import "server-only";
 import type {
   AcademicYearSummary,
   SchoolProfile,
+  SignOffMode,
   StaffAssignmentSummary,
   SubjectSummary,
   TermSummary,
@@ -59,7 +60,7 @@ export async function getSchoolProfile(
   const { data, error } = await supabase
     .from("schools")
     .select(
-      "id, name, code, status, physical_address, primary_phone, secondary_phone, official_email, website, logo_url",
+      "id, name, code, status, physical_address, primary_phone, secondary_phone, official_email, website, logo_url, enable_attendance, headmaster_signature_url, sign_off_mode, headmaster_name, headmaster_title",
     )
     .eq("id", schoolId)
     .maybeSingle();
@@ -78,6 +79,11 @@ export async function getSchoolProfile(
     officialEmail: (data.official_email as string | null) ?? null,
     website: (data.website as string | null) ?? null,
     logoUrl: (data.logo_url as string | null) ?? null,
+    enableAttendance: (data.enable_attendance as boolean | null) ?? true,
+    headmasterSignatureUrl: (data.headmaster_signature_url as string | null) ?? null,
+    signOffMode: (data.sign_off_mode as SignOffMode | null) ?? "image",
+    headmasterName: (data.headmaster_name as string | null) ?? null,
+    headmasterTitle: (data.headmaster_title as string | null) ?? null,
   };
 }
 
@@ -99,6 +105,11 @@ export async function updateSchoolProfile(options: {
   readonly officialEmail?: string | null;
   readonly website?: string | null;
   readonly logoUrl?: string | null;
+  readonly enableAttendance?: boolean;
+  readonly headmasterSignatureUrl?: string | null;
+  readonly signOffMode?: SignOffMode;
+  readonly headmasterName?: string | null;
+  readonly headmasterTitle?: string | null;
 }): Promise<UpdateSchoolProfileResult> {
   const {
     supabase,
@@ -110,22 +121,44 @@ export async function updateSchoolProfile(options: {
     officialEmail,
     website,
     logoUrl,
+    enableAttendance,
+    headmasterSignatureUrl,
+    signOffMode,
+    headmasterName,
+    headmasterTitle,
   } = options;
+
+  const patch: Record<string, unknown> = {
+    name,
+    physical_address: physicalAddress,
+    primary_phone: primaryPhone,
+    secondary_phone: secondaryPhone,
+    official_email: officialEmail,
+    website,
+    logo_url: logoUrl,
+  };
+  if (enableAttendance !== undefined) {
+    patch.enable_attendance = enableAttendance;
+  }
+  if (headmasterSignatureUrl !== undefined) {
+    patch.headmaster_signature_url = headmasterSignatureUrl;
+  }
+  if (signOffMode !== undefined) {
+    patch.sign_off_mode = signOffMode;
+  }
+  if (headmasterName !== undefined) {
+    patch.headmaster_name = headmasterName;
+  }
+  if (headmasterTitle !== undefined) {
+    patch.headmaster_title = headmasterTitle;
+  }
 
   const { data, error } = await supabase
     .from("schools")
-    .update({
-      name,
-      physical_address: physicalAddress,
-      primary_phone: primaryPhone,
-      secondary_phone: secondaryPhone,
-      official_email: officialEmail,
-      website,
-      logo_url: logoUrl,
-    })
+    .update(patch)
     .eq("id", schoolId)
     .select(
-      "id, name, code, status, physical_address, primary_phone, secondary_phone, official_email, website, logo_url",
+      "id, name, code, status, physical_address, primary_phone, secondary_phone, official_email, website, logo_url, enable_attendance, headmaster_signature_url, sign_off_mode, headmaster_name, headmaster_title",
     )
     .maybeSingle();
 
@@ -157,6 +190,11 @@ export async function updateSchoolProfile(options: {
       officialEmail: (data.official_email as string | null) ?? null,
       website: (data.website as string | null) ?? null,
       logoUrl: (data.logo_url as string | null) ?? null,
+      enableAttendance: (data.enable_attendance as boolean | null) ?? true,
+      headmasterSignatureUrl: (data.headmaster_signature_url as string | null) ?? null,
+    signOffMode: (data.sign_off_mode as SignOffMode | null) ?? "image",
+    headmasterName: (data.headmaster_name as string | null) ?? null,
+    headmasterTitle: (data.headmaster_title as string | null) ?? null,
     },
   };
 }

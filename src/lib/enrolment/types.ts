@@ -62,6 +62,7 @@ export interface LearnerDetail extends LearnerSummary {
   readonly residentialAddress: string;
   readonly guardianPhone: string;
   readonly guardianEmail: string | null;
+  readonly healthStatus: string | null;
   /** Server registration timestamp, which is distinct from the school year. */
   readonly createdAt: string;
   /** Enrolment-level portal state, deliberately separate from `status`. */

@@ -39,6 +39,7 @@ export interface SidebarProps {
   readonly canManageClasses: boolean;
   readonly canViewSettings: boolean;
   readonly canViewAttendance: boolean;
+  readonly enableAttendance?: boolean;
   readonly canViewResults: boolean;
   readonly canViewData: boolean;
   readonly canViewAcademics: boolean;
@@ -84,7 +85,9 @@ export function Sidebar(props: SidebarProps) {
   }
 
   const showAttendance =
-    props.canViewAttendance && props.role !== "school_administrator";
+    props.canViewAttendance &&
+    props.role !== "school_administrator" &&
+    (props.enableAttendance ?? true);
 
   const items: NavItem[] = [
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, show: true },

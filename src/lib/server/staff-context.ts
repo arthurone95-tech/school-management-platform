@@ -22,6 +22,7 @@ export interface StaffContext {
   readonly role: string;
   readonly schoolId: string;
   readonly schoolName: string | null;
+  readonly enableAttendance: boolean;
   /** Checks a permission against the resolved school. */
   hasPermission(permission: string): Promise<boolean>;
 }
@@ -60,9 +61,9 @@ export async function loadStaffContext(
   // RLS lets an active member read their own school's row.
   const { data: school } = await supabase
     .from("schools")
-    .select("name")
+    .select("name, enable_attendance")
     .eq("id", schoolId)
-    .maybeSingle<{ name: string }>();
+    .maybeSingle<{ name: string; enable_attendance: boolean | null }>();
 
   return {
     userId: userData.user.id,
@@ -70,6 +71,7 @@ export async function loadStaffContext(
     role: membership.role as string,
     schoolId,
     schoolName: school?.name ?? null,
+    enableAttendance: school?.enable_attendance ?? true,
     async hasPermission(permission: string): Promise<boolean> {
       const { data } = await supabase.rpc("has_school_permission", {
         target_school_id: schoolId,

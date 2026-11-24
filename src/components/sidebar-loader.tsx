@@ -22,6 +22,7 @@ export function SidebarLoader() {
           canManageClasses: !!data.canManageClasses,
           canViewSettings: !!data.canViewSettings,
           canViewAttendance: !!data.canViewAttendance,
+          enableAttendance: !!data.enableAttendance,
           canViewResults: !!data.canViewResults,
           canViewData: !!data.canViewData,
           canViewAcademics: !!data.canViewAcademics,

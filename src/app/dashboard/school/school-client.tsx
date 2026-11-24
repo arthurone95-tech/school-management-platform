@@ -15,6 +15,7 @@ import type { SchoolProfile } from "@/lib/administration/types";
 import type { ClassSummary } from "@/lib/enrolment/types";
 import { roleLabel } from "@/lib/staff/roles";
 import { AssessmentModeToggle } from "./assessment-mode-toggle";
+import { HeadmasterSignoffSettings } from "./headmaster-signoff-settings";
 
 const NETWORK_MESSAGE =
   "We could not reach the server. Check your connection and try again.";
@@ -101,6 +102,7 @@ export function SchoolClient({
   const [websiteDraft, setWebsiteDraft] = useState("");
   const [logoUrlDraft, setLogoUrlDraft] = useState<string | null>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [enableAttendanceDraft, setEnableAttendanceDraft] = useState(true);
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileNotice, setProfileNotice] = useState<string | null>(null);
   const [classes, setClasses] = useState<ClassSummary[] | null>(null);
@@ -155,6 +157,7 @@ export function SchoolClient({
         setOfficialEmailDraft(result.value.officialEmail ?? "");
         setWebsiteDraft(result.value.website ?? "");
         setLogoUrlDraft(result.value.logoUrl ?? null);
+        setEnableAttendanceDraft(result.value.enableAttendance ?? true);
       } else {
         setProfileError(result.message);
       }
@@ -177,6 +180,7 @@ export function SchoolClient({
       officialEmail: officialEmailDraft,
       website: websiteDraft,
       logoUrl: logoUrlDraft,
+      enableAttendance: enableAttendanceDraft,
     });
     if (!parsed.ok) {
       setProfileError(parsed.message);
@@ -237,6 +241,8 @@ export function SchoolClient({
       officialEmail: officialEmailDraft,
       website: websiteDraft,
       logoUrl: data.publicUrl,
+      enableAttendance: enableAttendanceDraft,
+      headmasterSignatureUrl: profile.headmasterSignatureUrl,
     });
 
     setUploadingLogo(false);
@@ -360,6 +366,22 @@ export function SchoolClient({
                   value={websiteDraft}
                   onChange={(event) => setWebsiteDraft(event.target.value)}
                 />
+                <div className="stack stack--sm">
+                  <label className="cluster" style={{ alignItems: "center" }}>
+                    <input
+                      type="checkbox"
+                      role="switch"
+                      aria-checked={enableAttendanceDraft}
+                      checked={enableAttendanceDraft}
+                      onChange={(event) =>
+                        setEnableAttendanceDraft(event.target.checked)
+                      }
+                      disabled={!canManageSchool || savingProfile}
+                    />
+                    <span>Enable Daily Attendance Module</span>
+                  </label>
+                </div>
+
                 <Button type="submit" loading={savingProfile}>
                   {savingProfile ? "Saving..." : "Save profile"}
                 </Button>
@@ -370,6 +392,25 @@ export function SchoolClient({
                 School code: <strong>{profile.code}</strong>
               </p>
             ) : null}
+          </CardBody>
+        </Card>
+      ) : null}
+
+      {canManageSchool && profile !== null ? (
+        <Card>
+          <CardHeader
+            title="Headmaster sign-off"
+            description="Choose one active mode for confirming report cards. Unconfirmed cards never show a signature, stamp, or headmaster remark."
+          />
+          <CardBody>
+            <HeadmasterSignoffSettings
+              profile={profile}
+              canManage={canManageSchool}
+              onSaved={(school) => {
+                setProfile(school);
+                router.refresh();
+              }}
+            />
           </CardBody>
         </Card>
       ) : null}

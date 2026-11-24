@@ -28,6 +28,7 @@ export const MEMBER_STATUS_ACTIONS = ["suspend", "restore", "revoke"] as const;
 export type MemberStatusAction = (typeof MEMBER_STATUS_ACTIONS)[number];
 
 import { isIsoDate } from "@/lib/dates";
+import { SIGNOFF_MODES, type SignOffMode } from "@/lib/administration/types";
 
 export type ParseResult<T> =
   | { readonly ok: true; readonly value: T }
@@ -130,6 +131,11 @@ export function parseSchoolProfileUpdateInput(
   officialEmail: string | null;
   website: string | null;
   logoUrl: string | null;
+  enableAttendance?: boolean;
+  headmasterSignatureUrl?: string | null;
+  signOffMode?: SignOffMode;
+  headmasterName?: string | null;
+  headmasterTitle?: string | null;
 }> {
   if (!isRecord(body)) {
     return { ok: false, message: "Enter the school name." };
@@ -161,6 +167,53 @@ export function parseSchoolProfileUpdateInput(
     return { ok: false, message: "Enter a valid official email address." };
   }
 
+  let enableAttendance: boolean | undefined;
+  if (has(body as Record<string, unknown>, "enableAttendance")) {
+    const raw = (body as Record<string, unknown>)["enableAttendance"];
+    if (typeof raw !== "boolean") {
+      return { ok: false, message: "Invalid attendance toggle." };
+    }
+    enableAttendance = raw;
+  }
+
+  let headmasterSignatureUrl: string | null | undefined;
+  if (has(body as Record<string, unknown>, "headmasterSignatureUrl")) {
+    const raw = (body as Record<string, unknown>)["headmasterSignatureUrl"];
+    if (raw === null) {
+      headmasterSignatureUrl = null;
+    } else if (typeof raw === "string") {
+      const cleaned = raw.trim();
+      if (cleaned.length === 0) {
+        headmasterSignatureUrl = null;
+      } else if (cleaned.length > 500) {
+        return { ok: false, message: "Invalid signature URL." };
+      } else {
+        headmasterSignatureUrl = cleaned;
+      }
+    } else {
+      return { ok: false, message: "Invalid signature URL." };
+    }
+  }
+
+  let signOffMode: SignOffMode | undefined;
+  if (has(body as Record<string, unknown>, "signOffMode")) {
+    const rawMode = (body as Record<string, unknown>)["signOffMode"];
+    if (typeof rawMode !== "string" || !SIGNOFF_MODES.includes(rawMode as SignOffMode)) {
+      return { ok: false, message: "Choose a valid sign-off mode." };
+    }
+    signOffMode = rawMode as SignOffMode;
+  }
+
+  const headmasterName = readOptionalTextField("headmasterName", 120);
+  const headmasterTitle = readOptionalTextField("headmasterTitle", 80);
+
+  if (signOffMode === "stamp" && (!headmasterName || !headmasterTitle)) {
+    return {
+      ok: false,
+      message: "Enter the signatory name and title for the stamp mode.",
+    };
+  }
+
   return {
     ok: true,
     value: {
@@ -171,8 +224,33 @@ export function parseSchoolProfileUpdateInput(
       officialEmail,
       website: optionalText("website", 120),
       logoUrl: optionalText("logoUrl", 500),
+      enableAttendance,
+      ...(headmasterSignatureUrl !== undefined
+        ? { headmasterSignatureUrl }
+        : {}),
+      ...(signOffMode !== undefined ? { signOffMode } : {}),
+      ...(headmasterName !== undefined ? { headmasterName } : {}),
+      ...(headmasterTitle !== undefined ? { headmasterTitle } : {}),
     },
   };
+
+  function readOptionalTextField(key: string, max: number): string | null | undefined {
+    if (!has(body as Record<string, unknown>, key)) {
+      return undefined;
+    }
+    const rawValue = (body as Record<string, unknown>)[key];
+    if (rawValue === null) {
+      return null;
+    }
+    if (typeof rawValue !== "string") {
+      return null;
+    }
+    const trimmed = rawValue.trim();
+    if (trimmed.length === 0) {
+      return null;
+    }
+    return trimmed.length <= max ? trimmed : null;
+  }
 }
 
 // ---------------------------------------------------------------------------

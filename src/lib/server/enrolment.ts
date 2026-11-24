@@ -68,7 +68,7 @@ const LEARNER_COLUMNS =
  * list response carries only what the list needs (docs/SECURITY_AND_PRIVACY.md
  * 4, docs/AGENTS.md 7).
  */
-const LEARNER_DETAIL_COLUMNS = `${LEARNER_COLUMNS}, residential_address, guardian_phone, guardian_email, created_at, portal_access_state, auth_user_id`;
+const LEARNER_DETAIL_COLUMNS = `${LEARNER_COLUMNS}, residential_address, guardian_phone, guardian_email, health_status, created_at, portal_access_state, auth_user_id`;
 
 interface RawLearner {
   id: string;
@@ -305,6 +305,7 @@ export async function getLearnerDetail(
         residential_address: string;
         guardian_phone: string;
         guardian_email: string | null;
+        health_status: string | null;
         created_at: string;
         portal_access_state: string;
         auth_user_id: string | null;
@@ -328,6 +329,7 @@ export async function getLearnerDetail(
     residentialAddress: data.residential_address,
     guardianPhone: data.guardian_phone,
     guardianEmail: data.guardian_email,
+    healthStatus: data.health_status,
     createdAt: data.created_at,
     portalAccessState: data.portal_access_state,
     authUserId: data.auth_user_id,
@@ -567,6 +569,7 @@ export async function enrolLearner({
         residential_address: input.residentialAddress,
         guardian_phone: input.guardianPhone,
         guardian_email: input.guardianEmail,
+        health_status: input.healthStatus,
         username,
       })
       .select(LEARNER_COLUMNS)
@@ -962,6 +965,9 @@ export async function correctLearner(params: {
   }
   if (input.guardianEmail !== undefined) {
     patch.guardian_email = input.guardianEmail;
+  }
+  if (input.healthStatus !== undefined) {
+    patch.health_status = input.healthStatus;
   }
 
   const { data, error } = await supabase

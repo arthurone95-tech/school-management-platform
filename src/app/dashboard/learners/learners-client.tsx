@@ -92,6 +92,7 @@ const EMPTY_FORM = {
   residentialAddress: "",
   guardianPhone: "",
   guardianEmail: "",
+  healthStatus: "",
   classId: "",
 };
 
@@ -247,6 +248,10 @@ function LearnerPrintableProfile({
         <ProfileLine
           label="Guardian email"
           value={detail.guardianEmail ?? "Not recorded"}
+        />
+        <ProfileLine
+          label="Health / medical status"
+          value={detail.healthStatus ?? "Not recorded"}
         />
         <ProfileLine label="Current class" value={detail.className ?? "None"} />
         <ProfileLine
@@ -730,6 +735,7 @@ export function LearnersClient({
       residentialAddress: detail.residentialAddress,
       guardianPhone: detail.guardianPhone,
       guardianEmail: detail.guardianEmail ?? "",
+      healthStatus: detail.healthStatus ?? "",
       classId: detail.classId ?? "",
     });
   }
@@ -830,6 +836,9 @@ export function LearnersClient({
     }
     if (detailForm.guardianEmail !== (detail.guardianEmail ?? "")) {
       payload.guardianEmail = detailForm.guardianEmail;
+    }
+    if (detailForm.healthStatus !== (detail.healthStatus ?? "")) {
+      payload.healthStatus = detailForm.healthStatus.trim() === "" ? null : detailForm.healthStatus;
     }
 
     if (Object.keys(payload).length === 1) {
@@ -1122,6 +1131,15 @@ export function LearnersClient({
                     update("guardianEmail", event.target.value)
                   }
                 />
+                <TextField
+                  label="Health / medical status (optional)"
+                  name="healthStatus"
+                  autoComplete="off"
+                  value={form.healthStatus}
+                  onChange={(event) =>
+                    update("healthStatus", event.target.value)
+                  }
+                />
                 <div className="form-grid__actions">
                   <Button
                     type="submit"
@@ -1332,6 +1350,10 @@ export function LearnersClient({
                                     value={formatDateTime(
                                       detailState.detail.lastSignInAt,
                                     )}
+                                  />
+                                  <ProfileLine
+                                    label="Health / medical status"
+                                    value={detailState.detail.healthStatus ?? "Not recorded"}
                                   />
                                   <p className="record__meta">
                                     <strong>Class history:</strong>{" "}
@@ -1564,6 +1586,15 @@ export function LearnersClient({
                                         "guardianEmail",
                                         event.target.value,
                                       )
+                                    }
+                                  />
+                                  <TextField
+                                    label="Health / medical status (optional)"
+                                    name="healthStatus"
+                                    autoComplete="off"
+                                    value={detailForm.healthStatus}
+                                    onChange={(event) =>
+                                      updateDetail("healthStatus", event.target.value)
                                     }
                                   />
                                   <p className="muted">

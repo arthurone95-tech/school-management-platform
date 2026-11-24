@@ -25,6 +25,8 @@ import {
   isHeading,
 } from "@/lib/school/subjects";
 import type { GesRubric } from "@/lib/academics/ges-types";
+import type { ReportCardSignOffSnapshot } from "@/lib/administration/types";
+import { readSignOffSnapshot } from "@/lib/reports/sign-off";
 
 const NETWORK_MESSAGE =
   "We could not reach the server. Check your connection and try again.";
@@ -159,6 +161,8 @@ export function GesResults({
   const [search, setSearch] = useState("");
   const [selectedLearnerId, setSelectedLearnerId] = useState("");
   const [reportLearnerId, setReportLearnerId] = useState("");
+  const [reportSignOff, setReportSignOff] =
+    useState<ReportCardSignOffSnapshot | null>(null);
   const [draft, setDraft] = useState<ScoreDraft>({});
   const [rubricDraft, setRubricDraft] = useState<Record<string, GesRubric | null>>({});
   const [draftError, setDraftError] = useState<string | null>(null);
@@ -206,6 +210,38 @@ export function GesResults({
     [sheet, reportLearnerId],
   );
 
+  useEffect(() => {
+    let cancelled = false;
+    if (!reportLearnerId) {
+      return () => {
+        cancelled = true;
+      };
+    }
+    void (async () => {
+      try {
+        const response = await fetch(
+          `/api/staff/reports/confirm?learnerId=${encodeURIComponent(reportLearnerId)}`,
+          { headers: { Accept: "application/json" } },
+        );
+        const payload = (await response.json().catch(() => ({}))) as Record<
+          string,
+          unknown
+        >;
+        if (cancelled || !response.ok || payload["ok"] !== true) {
+          return;
+        }
+        setReportSignOff(readSignOffSnapshot(payload["reportCard"]));
+      } catch {
+        if (!cancelled) {
+          setReportSignOff(null);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [reportLearnerId]);
+
   const visibleLearners = useMemo(() => {
     const query = search.trim().toLowerCase();
     if (!sheet || query.length === 0) {
@@ -222,6 +258,7 @@ export function GesResults({
     setClassId(value);
     setSelectedLearnerId("");
     setReportLearnerId("");
+    setReportSignOff(null);
     setSheet(null);
     setDraft({});
     setRubricDraft({});
@@ -234,6 +271,7 @@ export function GesResults({
     setTermId(value);
     setSelectedLearnerId("");
     setReportLearnerId("");
+    setReportSignOff(null);
     setSheet(null);
     setDraft({});
     setRubricDraft({});
@@ -270,12 +308,14 @@ export function GesResults({
     }
     setRubricDraft(nextRubric);
     setReportLearnerId("");
+    setReportSignOff(null);
     setDraftError(null);
     setNotice(null);
   }
 
   function openReport(learnerId: string) {
     setReportLearnerId(learnerId);
+    setReportSignOff(null);
     setNotice(null);
   }
 
@@ -821,6 +861,17 @@ export function GesResults({
                   subjects={reportSubjects}
                   bills={{}}
                   earlyYears={sheet.earlyYears}
+                  reportStatus={reportSignOff?.status}
+                  headmasterSignatureUrl={
+                    reportSignOff?.signatureAssetUrl ??
+                    reportSignOff?.headmasterSignatureUrl ??
+                    null
+                  }
+                  signOffMode={reportSignOff?.signOffMode ?? null}
+                  signatoryName={reportSignOff?.signatoryName ?? null}
+                  signatoryTitle={reportSignOff?.signatoryTitle ?? null}
+                  confirmedAt={reportSignOff?.confirmedAt ?? null}
+                  headTeacherRemarks={reportSignOff?.headmasterRemark ?? null}
                 />
               </CardBody>
             </Card>

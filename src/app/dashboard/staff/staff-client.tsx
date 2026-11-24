@@ -534,7 +534,12 @@ export function StaffClient({
                         <p className="record__meta">
                           Joined {formatDateTime(member.joinedAt)} · Last sign-in{" "}
                           {formatDateTime(member.lastSignInAt)}
-                        </p>
+        
+                        {member.healthStatus ? (
+                          <p className="record__meta">
+                            Health status: {member.healthStatus}
+                          </p>
+                        ) : null}                </p>
 
                         <div className="stack stack--sm">
                           {member.assignments.length === 0 ? (

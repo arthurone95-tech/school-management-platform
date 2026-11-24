@@ -6,6 +6,9 @@
  * browser clients can speak the same shapes (docs/DECISIONS.md D-029).
  */
 
+export const SIGNOFF_MODES = ["image", "stamp", "draw"] as const;
+export type SignOffMode = (typeof SIGNOFF_MODES)[number];
+
 export interface SchoolProfile {
   readonly id: string;
   readonly name: string;
@@ -17,6 +20,22 @@ export interface SchoolProfile {
   readonly officialEmail: string | null;
   readonly website: string | null;
   readonly logoUrl: string | null;
+  readonly enableAttendance: boolean;
+  readonly headmasterSignatureUrl: string | null;
+  readonly signOffMode: SignOffMode;
+  readonly headmasterName: string | null;
+  readonly headmasterTitle: string | null;
+}
+
+export interface ReportCardSignOffSnapshot {
+  readonly status: "draft" | "confirmed";
+  readonly headmasterRemark: string | null;
+  readonly headmasterSignatureUrl: string | null;
+  readonly signOffMode: SignOffMode | null;
+  readonly signatoryName: string | null;
+  readonly signatoryTitle: string | null;
+  readonly signatureAssetUrl: string | null;
+  readonly confirmedAt: string | null;
 }
 
 export interface TermSummary {
@@ -74,6 +93,7 @@ export interface StaffMemberSummary {
   readonly joinedAt: string;
   /** Supabase Auth last sign-in, or null when the person has not signed in. */
   readonly lastSignInAt: string | null;
+  readonly healthStatus: string | null;
   readonly assignments: readonly StaffAssignmentSummary[];
 }
 

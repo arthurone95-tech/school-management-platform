@@ -50,6 +50,7 @@ export async function GET(): Promise<NextResponse> {
   return json({
     ok: true,
     schoolName: context.schoolName,
+    enableAttendance: context.enableAttendance,
     role: context.role,
     email: context.email,
     canManageMembers,

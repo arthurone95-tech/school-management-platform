@@ -24,6 +24,8 @@ import type {
   AttendanceClassOption,
   AttendanceSubjectOption,
 } from "@/lib/attendance/types";
+import type { ReportCardSignOffSnapshot } from "@/lib/administration/types";
+import { readSignOffSnapshot } from "@/lib/reports/sign-off";
 import { roleLabel } from "@/lib/staff/roles";
 
 /**
@@ -158,6 +160,8 @@ export function ResultsClient({
     null,
   );
   const [reportCardLoading, setReportCardLoading] = useState(false);
+  const [reportSignOff, setReportSignOff] =
+    useState<ReportCardSignOffSnapshot | null>(null);
 
   const [exportFrom, setExportFrom] = useState(() =>
     new Date(Date.parse(`${today}T00:00:00Z`) - 90 * 86_400_000)
@@ -478,15 +482,22 @@ export function ResultsClient({
     setReportCardLoading(true);
     setReportLearnerId(learnerId);
     setReportSubjects(null);
+    setReportSignOff(null);
 
-    const sheets = await Promise.all(
-      report.assessments.map((assessment) =>
-        getJson<ResultSheet>(
-          `/api/staff/results?assessmentId=${encodeURIComponent(assessment.assessmentId)}`,
-          "sheet",
+    const [sheets, signOffResult] = await Promise.all([
+      Promise.all(
+        report.assessments.map((assessment) =>
+          getJson<ResultSheet>(
+            `/api/staff/results?assessmentId=${encodeURIComponent(assessment.assessmentId)}`,
+            "sheet",
+          ),
         ),
       ),
-    );
+      getJson<unknown>(
+        `/api/staff/reports/confirm?learnerId=${encodeURIComponent(learnerId)}`,
+        "reportCard",
+      ),
+    ]);
 
     const failed = sheets.find((result) => !result.ok);
     if (failed && !failed.ok) {
@@ -518,6 +529,9 @@ export function ResultsClient({
     }
 
     setReportSubjects(subjects);
+    setReportSignOff(
+      signOffResult.ok ? readSignOffSnapshot(signOffResult.value) : null,
+    );
     setReportCardLoading(false);
   }
 
@@ -1025,6 +1039,7 @@ export function ResultsClient({
                     onClick={() => {
                       setReportLearnerId("");
                       setReportSubjects(null);
+                      setReportSignOff(null);
                     }}
                   >
                     Close
@@ -1044,6 +1059,17 @@ export function ResultsClient({
                     ? "—"
                     : `${reportLearner.averagePercentage}%`
                 }. ${reportLearner.assessmentsTaken} assessment(s) recorded.`}
+                reportStatus={reportSignOff?.status}
+                headmasterSignatureUrl={
+                  reportSignOff?.signatureAssetUrl ??
+                  reportSignOff?.headmasterSignatureUrl ??
+                  null
+                }
+                signOffMode={reportSignOff?.signOffMode ?? null}
+                signatoryName={reportSignOff?.signatoryName ?? null}
+                signatoryTitle={reportSignOff?.signatoryTitle ?? null}
+                confirmedAt={reportSignOff?.confirmedAt ?? null}
+                headTeacherRemarks={reportSignOff?.headmasterRemark ?? null}
               />
             </CardBody>
           </Card>
